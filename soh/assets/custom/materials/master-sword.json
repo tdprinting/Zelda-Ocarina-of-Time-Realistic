@@ -1,0 +1,10 @@
+{
+    "version": 1,
+    "materials": [
+        {
+            "texture": "textures/player-model/master-sword/basecolor",
+            "normal": "textures/player-model/master-sword/normal",
+            "roughnessMetal": "textures/player-model/master-sword/rm"
+        }
+    ]
+}

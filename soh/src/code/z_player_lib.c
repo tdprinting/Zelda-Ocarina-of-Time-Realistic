@@ -10,6 +10,8 @@
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/Enhancements/randomizer/draw.h"
 #include "soh/ResourceManagerHelpers.h"
+#include "soh/Enhancements/PlayerModel/PlayerModel.h"
+#include "soh/Enhancements/PlayerModel/PlayerProps.h"
 
 #include <stdlib.h>
 #include <libultraship/bridge/consolevariablebridge.h>
@@ -1036,9 +1038,50 @@ Gfx* sBootDListGroups[][2] = {
     { gLinkAdultLeftHoverBootDL, gLinkAdultRightHoverBootDL }, // PLAYER_BOOTS_HOVER
 };
 
+// Wrap the limb callbacks so the replacement child model can see every limb after the vanilla
+// callback has run (see soh/Enhancements/PlayerModel).
+s32 Player_OverrideLimbDrawPause(PlayState* play, s32 limbIndex, Gfx** dList, Vec3f* pos, Vec3s* rot, void* arg);
+static OverrideLimbDrawOpa sPlayerModelOverride;
+static PostLimbDrawOpa sPlayerModelPost;
+
+static s32 Player_OverrideLimbDrawPlayerModel(PlayState* play, s32 limbIndex, Gfx** dList, Vec3f* pos, Vec3s* rot,
+                                              void* arg) {
+    s32 ret = (sPlayerModelOverride != NULL) ? sPlayerModelOverride(play, limbIndex, dList, pos, rot, arg) : false;
+    PlayerModel_OverrideLimb(limbIndex, dList, pos);
+    return ret;
+}
+
+static void Player_PostLimbDrawPlayerModel(PlayState* play, s32 limbIndex, Gfx** dList, Vec3s* rot, void* arg) {
+    PlayerModel_PostLimb(limbIndex);
+    if (sPlayerModelPost != NULL) {
+        sPlayerModelPost(play, limbIndex, dList, rot, arg);
+    }
+}
+
+// The same for the high-detail Master Sword and sheath on adult Link (see PlayerProps.h).
+static OverrideLimbDrawOpa sPlayerPropsOverride;
+static PostLimbDrawOpa sPlayerPropsPost;
+
+static s32 Player_OverrideLimbDrawProps(PlayState* play, s32 limbIndex, Gfx** dList, Vec3f* pos, Vec3s* rot,
+                                        void* arg) {
+    s32 ret = (sPlayerPropsOverride != NULL) ? sPlayerPropsOverride(play, limbIndex, dList, pos, rot, arg) : false;
+    PlayerProps_OverrideLimb(limbIndex, dList);
+    return ret;
+}
+
+static void Player_PostLimbDrawProps(PlayState* play, s32 limbIndex, Gfx** dList, Vec3s* rot, void* arg) {
+    PlayerProps_PostLimb(limbIndex);
+    if (sPlayerPropsPost != NULL) {
+        sPlayerPropsPost(play, limbIndex, dList, rot, arg);
+    }
+}
+
 void Player_DrawImpl(PlayState* play, void** skeleton, Vec3s* jointTable, s32 dListCount, s32 lod, s32 tunic, s32 boots,
                      s32 face, OverrideLimbDrawOpa overrideLimbDraw, PostLimbDrawOpa postLimbDraw, void* data) {
     Color_RGB8* color;
+    if (PlayerModel_ShouldReplace(skeleton) || LINK_IS_ADULT) {
+        jointTable = PlayerModel_DebugJointTable(jointTable);
+    }
     s32 eyeIndex = (jointTable[22].x & 0xF) - 1;
     s32 mouthIndex = (jointTable[22].x >> 4) - 1;
 
@@ -1087,15 +1130,39 @@ void Player_DrawImpl(PlayState* play, void** skeleton, Vec3s* jointTable, s32 dL
     }
 
     // If we have a custom link model, always use the most detailed LOD
-    if (Player_IsCustomLinkModel()) {
+    if (Player_IsCustomLinkModel() || PlayerModel_ShouldReplace(skeleton)) {
         lod = 0;
     }
 
     sDListsLodOffset = lod * 2;
 
-    SkelAnime_DrawFlexLod(play, skeleton, jointTable, dListCount, overrideLimbDraw, postLimbDraw, data, lod);
+    // The replacement model covers the whole body, so it is only used when every limb is drawn
+    // (not in first person or while crawling) and Link is visible.
+    s32 usePlayerModel = PlayerModel_ShouldReplace(skeleton) && !GameInteractor_InvisibleLinkActive() &&
+                         (overrideLimbDraw == Player_OverrideLimbDrawGameplayDefault ||
+                          overrideLimbDraw == Player_OverrideLimbDrawPause);
 
-    if (!GameInteractor_InvisibleLinkActive() &&
+    if (usePlayerModel) {
+        sPlayerModelOverride = overrideLimbDraw;
+        sPlayerModelPost = postLimbDraw;
+        // The face rig does its own blinking, so it only takes the face the animation itself asks for
+        PlayerModel_Begin(play, (overrideLimbDraw == Player_OverrideLimbDrawGameplayDefault) ? data : NULL,
+                          (jointTable[22].x & 0xF) - 1, (jointTable[22].x >> 4) - 1);
+        SkelAnime_DrawFlexLod(play, skeleton, jointTable, dListCount, Player_OverrideLimbDrawPlayerModel,
+                              Player_PostLimbDrawPlayerModel, data, lod);
+        PlayerModel_End(play);
+    } else if (LINK_IS_ADULT && !GameInteractor_InvisibleLinkActive()) {
+        sPlayerPropsOverride = overrideLimbDraw;
+        sPlayerPropsPost = postLimbDraw;
+        PlayerProps_Begin();
+        SkelAnime_DrawFlexLod(play, skeleton, jointTable, dListCount, Player_OverrideLimbDrawProps,
+                              Player_PostLimbDrawProps, data, lod);
+        PlayerProps_End(play);
+    } else {
+        SkelAnime_DrawFlexLod(play, skeleton, jointTable, dListCount, overrideLimbDraw, postLimbDraw, data, lod);
+    }
+
+    if (!usePlayerModel && !GameInteractor_InvisibleLinkActive() &&
         ((CVarGetInteger(CVAR_ENHANCEMENT("FirstPersonGauntlets"), 0) && LINK_IS_ADULT) ||
          (overrideLimbDraw != Player_OverrideLimbDrawGameplayFirstPerson)) &&
         (overrideLimbDraw != Player_OverrideLimbDrawGameplayCrawling) &&

@@ -1,0 +1,17 @@
+{
+    "version": 1,
+    "materials": [
+        {
+            "texture": "textures/player-model/child-link/basecolor",
+            "normal": "textures/player-model/child-link/normal",
+            "roughnessMetal": "textures/player-model/child-link/rm",
+            "skinMask": "textures/player-model/child-link/skinmask"
+        },
+        {
+            "texture": "textures/player-model/child-link/eye_basecolor",
+            "normal": "textures/player-model/child-link/eye_normal",
+            "shading": "eye",
+            "normalStrength": 0.6
+        }
+    ]
+}
