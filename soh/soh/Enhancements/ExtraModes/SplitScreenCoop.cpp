@@ -895,8 +895,8 @@ extern "C" void Coop_UpdatePauseMenus(PlayState* play) {
 
 // The largest 4:3 area (as it looks on screen) centered in a viewport, in the game's 320x240 coordinates.
 static void Coop_FitPauseMenu(const Viewport* viewport, float windowAspect, s32* x, s32* y, s32* w, s32* h) {
-    float width = viewport->rightX - viewport->leftX;
-    float height = viewport->bottomY - viewport->topY;
+    float width = (float)(viewport->rightX - viewport->leftX);
+    float height = (float)(viewport->bottomY - viewport->topY);
     // One 320x240 unit is windowAspect * 3/4 times as wide on screen as it is tall.
     float unitAspect = windowAspect * ((float)SCREEN_HEIGHT / SCREEN_WIDTH);
     float fitHeight = width * unitAspect * 3.0f / 4.0f;
