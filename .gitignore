@@ -461,3 +461,6 @@ soh/properties.h
 /clang-format
 /clang-format.exe
 *.o2r
+
+# Headless render test captures (may contain game imagery)
+render-test-output/

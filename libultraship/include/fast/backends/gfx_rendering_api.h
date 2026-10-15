@@ -4,6 +4,7 @@
 
 #include <unordered_map>
 #include <set>
+#include <vector>
 #include "imconfig.h"
 
 namespace Fast {
@@ -15,6 +16,40 @@ struct GfxClipParameters {
 };
 
 enum FilteringMode { FILTER_THREE_POINT, FILTER_LINEAR, FILTER_NONE };
+
+#define MODERN_LIGHTING_MAX_LIGHTS 7
+// First texture unit of the material maps (normal, roughness-metal, skin mask)
+#define MATERIAL_TEXTURE_UNIT 8
+
+// Lighting inputs for the modern per-pixel lighting path. Directions and positions are world space.
+struct ModernLightingState {
+    float ambient[3];
+    int32_t numLights;
+    float dir[MODERN_LIGHTING_MAX_LIGHTS][3]; // normalized, pointing from the surface toward the light
+    float color[MODERN_LIGHTING_MAX_LIGHTS][3];
+    float eyePos[3];
+    // x: diffuse wrap, y: specular strength, z: specular power, w: rim strength
+    float params[4];
+};
+
+// Inputs for the screen-space ambient occlusion pass that runs after the opaque geometry.
+// Texture maps and parameters of a material (see Interpreter::MaterialDef). Texture ids come from
+// CreateMaterialTexture; 0 means "use the neutral default" (flat normal, white roughness-metal, no skin).
+struct MaterialState {
+    uint32_t normalTex;
+    uint32_t roughnessMetalTex;
+    uint32_t skinTex;
+    float params[4]; // x: roughness multiplier, y: metalness multiplier, z: normal strength, w: skin strength
+};
+
+struct AmbientOcclusionParams {
+    float invP00, invP11; // reciprocal x/y focal scales of the scene projection
+    float depthA, depthB; // view distance d = depthB / (ndcZ + depthA)
+    float radius;         // world units
+    float intensity;
+    float bias;
+    bool debugView; // write the occlusion term instead of multiplying the scene
+};
 
 // A hash function used to hash a: pair<float, float>
 struct hash_pair_ff {
@@ -79,6 +114,29 @@ class GfxRenderingAPI {
     virtual void SetSrgbMode() = 0;
     virtual ImTextureID GetTextureById(int id) = 0;
     virtual void SetCurrentPrimDepth(float depth) = 0;
+    // Backends that can consume the extra per-vertex normal/world position attributes return true.
+    virtual bool SupportsModernLighting() {
+        return false;
+    }
+    virtual void SetModernLightingState(const ModernLightingState& state) {
+    }
+    // Darkens the currently bound framebuffer by screen-space ambient occlusion computed from its depth.
+    virtual uint32_t CreateMaterialTexture(const uint8_t* rgba32Buf, uint32_t width, uint32_t height) {
+        return 0;
+    }
+    virtual void UpdateMaterialTexture(uint32_t textureId, const uint8_t* rgba32Buf, uint32_t width, uint32_t height) {
+    }
+    virtual void SetMaterialState(const MaterialState& state) {
+    }
+    virtual bool SupportsAmbientOcclusion() {
+        return false;
+    }
+    virtual void ApplyAmbientOcclusion(const AmbientOcclusionParams& params) {
+    }
+    // Reads a framebuffer back as top-down RGBA8 rows. Used by automated render tests.
+    virtual bool ReadFramebufferRGBA8(int fbId, uint32_t& width, uint32_t& height, std::vector<uint8_t>& out) {
+        return false;
+    }
 
   protected:
     int8_t mCurrentDepthTest = 0;

@@ -1,0 +1,58 @@
+{
+  "warmupTicks": 100,
+  "settleTicks": 4,
+  "baseline": "lighting",
+  "modScripts": [
+    "make-material-test-mod.py"
+  ],
+  "cvars": {
+    "gSettings.ModernRendering.Lighting": 1,
+    "gSettings.ModernRendering.AmbientOcclusion": 0,
+    "gSettings.ModernRendering.AmbientOcclusionDebug": 0
+  },
+  "scenes": [
+    {
+      "name": "links-house",
+      "entrance": 187,
+      "age": "child",
+      "dayTime": 32768
+    },
+    {
+      "name": "kokiri-forest",
+      "entrance": 238,
+      "age": "child",
+      "dayTime": 32768
+    }
+  ],
+  "variants": [
+    {
+      "name": "lighting",
+      "cvars": {
+        "gSettings.ModernRendering.Materials": 0
+      }
+    },
+    {
+      "name": "materials",
+      "cvars": {
+        "gSettings.ModernRendering.Materials": 1
+      }
+    },
+    {
+      "name": "materials-refreshed",
+      "cvars": {
+        "gSettings.ModernRendering.Materials": 1
+      },
+      "fillTextures": [
+        {
+          "path": "textures/render-test/shield-rm",
+          "rgba": [
+            255,
+            255,
+            0,
+            255
+          ]
+        }
+      ]
+    }
+  ]
+}

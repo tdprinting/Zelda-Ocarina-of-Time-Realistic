@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 
+#include <algorithm>
 #include <map>
 #include <unordered_map>
 
@@ -63,6 +64,30 @@ void GfxRenderingAPIOGL::SetUniforms(ShaderProgram* prg) const {
 
 void GfxRenderingAPIOGL::SetPerDrawUniforms() {
     glUniform1f(mCurrentShaderProgram->prim_depth_location, mCurrentPrimDepth);
+
+    if (mCurrentShaderProgram->modernLighting && mCurrentShaderProgram->modernLightingSerial != mModernLightingSerial) {
+        const ModernLightingState& s = mModernLightingState;
+        glUniform3fv(mCurrentShaderProgram->lightAmbientLocation, 1, s.ambient);
+        glUniform1i(mCurrentShaderProgram->lightCountLocation, s.numLights);
+        glUniform3fv(mCurrentShaderProgram->lightDirLocation, MODERN_LIGHTING_MAX_LIGHTS, &s.dir[0][0]);
+        glUniform3fv(mCurrentShaderProgram->lightColorLocation, MODERN_LIGHTING_MAX_LIGHTS, &s.color[0][0]);
+        glUniform3fv(mCurrentShaderProgram->eyePosLocation, 1, s.eyePos);
+        glUniform4fv(mCurrentShaderProgram->lightParamsLocation, 1, s.params);
+        mCurrentShaderProgram->modernLightingSerial = mModernLightingSerial;
+    }
+
+    if (mCurrentShaderProgram->material) {
+        // Material maps live on units after the combiner (0-5) and ambient occlusion (6-7) units
+        const GLuint ids[3] = { mMaterialState.normalTex, mMaterialState.roughnessMetalTex, mMaterialState.skinTex };
+        for (int k = 0; k < 3; k++) {
+            glActiveTexture(GL_TEXTURE0 + MATERIAL_TEXTURE_UNIT + k);
+            glBindTexture(GL_TEXTURE_2D, ids[k] != 0 ? ids[k] : mMaterialDefaultTex[k]);
+        }
+        if (mLastActiveTexture >= 0) {
+            glActiveTexture(GL_TEXTURE0 + mLastActiveTexture);
+        }
+        glUniform4fv(mCurrentShaderProgram->materialParamsLocation, 1, mMaterialState.params);
+    }
 
     if (mCurrentShaderProgram->usedTextures[0] || mCurrentShaderProgram->usedTextures[1]) {
         GLint filtering[2] = { textures[mCurrentTextureIds[0]].filtering, textures[mCurrentTextureIds[1]].filtering };
@@ -250,6 +275,13 @@ std::string GfxRenderingAPIOGL::BuildFsShader(const CCFeatures& cc_features) {
         { "o_invisible", cc_features.opt_invisible },
         { "o_grayscale", cc_features.opt_grayscale },
         { "o_prim_depth", cc_features.opt_prim_depth },
+        { "o_modern_lighting", cc_features.opt_modern_lighting },
+        { "o_material", cc_features.opt_modern_lighting && cc_features.opt_material && cc_features.usedTextures[0] },
+        { "o_material_eye", cc_features.opt_material_eye },
+        { "o_shade_input", M_ARRAY(cc_features.shade_input, bool, 7) },
+        { "o_uses_shade", std::any_of(std::begin(cc_features.shade_input), std::end(cc_features.shade_input),
+                                      [](bool b) { return b; }) },
+        { "MODERN_LIGHTING_MAX_LIGHTS", MODERN_LIGHTING_MAX_LIGHTS },
         { "o_textures", M_ARRAY(cc_features.usedTextures, bool, 2) },
         { "o_masks", M_ARRAY(cc_features.used_masks, bool, 2) },
         { "o_blend", M_ARRAY(cc_features.used_blend, bool, 2) },
@@ -283,6 +315,7 @@ std::string GfxRenderingAPIOGL::BuildFsShader(const CCFeatures& cc_features) {
 #ifdef __APPLE__
         { "GLSL_VERSION", "#version 410 core" },
         { "attr", "in" },
+        { "highp", "" },
         { "opengles", false },
         { "core_opengl", true },
         { "texture", "texture" },
@@ -290,6 +323,7 @@ std::string GfxRenderingAPIOGL::BuildFsShader(const CCFeatures& cc_features) {
 #elif defined(USE_OPENGLES)
         { "GLSL_VERSION", "#version 300 es\nprecision mediump float;" },
         { "attr", "in" },
+        { "highp", "highp" },
         { "opengles", true },
         { "core_opengl", false },
         { "texture", "texture" },
@@ -297,6 +331,7 @@ std::string GfxRenderingAPIOGL::BuildFsShader(const CCFeatures& cc_features) {
 #else
         { "GLSL_VERSION", "#version 130" },
         { "attr", "varying" },
+        { "highp", "" },
         { "opengles", false },
         { "core_opengl", false },
         { "texture", "texture2D" },
@@ -350,19 +385,23 @@ static std::string BuildVsShader(const CCFeatures& cc_features) {
                                      { "o_grayscale", cc_features.opt_grayscale },
                                      { "o_alpha", cc_features.opt_alpha },
                                      { "o_inputs", cc_features.numInputs },
+                                     { "o_modern_lighting", cc_features.opt_modern_lighting },
                                      { "update_floats", (InvokeFunc)UpdateFloats },
 #ifdef __APPLE__
                                      { "GLSL_VERSION", "#version 410 core" },
+                                     { "highp", "" },
                                      { "attr", "in" },
                                      { "out", "out" },
                                      { "opengles", false }
 #elif defined(USE_OPENGLES)
                                      { "GLSL_VERSION", "#version 300 es" },
+                                     { "highp", "highp" },
                                      { "attr", "in" },
                                      { "out", "out" },
                                      { "opengles", true }
 #else
                                      { "GLSL_VERSION", "#version 110" },
+                                     { "highp", "" },
                                      { "attr", "attribute" },
                                      { "out", "varying" },
                                      { "opengles", false }
@@ -491,6 +530,15 @@ ShaderProgram* GfxRenderingAPIOGL::CreateAndLoadNewShader(uint64_t shader_id0, u
         ++cnt;
     }
 
+    if (cc_features.opt_modern_lighting) {
+        prg->attribLocations[cnt] = glGetAttribLocation(shader_program, "aNormal");
+        prg->attribSizes[cnt] = 3;
+        ++cnt;
+        prg->attribLocations[cnt] = glGetAttribLocation(shader_program, "aWorldPos");
+        prg->attribSizes[cnt] = 3;
+        ++cnt;
+    }
+
     prg->openglProgramId = shader_program;
     prg->numInputs = cc_features.numInputs;
     prg->usedTextures[0] = cc_features.usedTextures[0];
@@ -508,9 +556,24 @@ ShaderProgram* GfxRenderingAPIOGL::CreateAndLoadNewShader(uint64_t shader_id0, u
     prg->texture_width_location = glGetUniformLocation(shader_program, "texture_width");
     prg->texture_height_location = glGetUniformLocation(shader_program, "texture_height");
     prg->texture_filtering_location = glGetUniformLocation(shader_program, "texture_filtering");
+    prg->modernLighting = cc_features.opt_modern_lighting;
+    prg->modernLightingSerial = 0;
+    prg->lightAmbientLocation = glGetUniformLocation(shader_program, "uLightAmbient");
+    prg->lightCountLocation = glGetUniformLocation(shader_program, "uLightCount");
+    prg->lightDirLocation = glGetUniformLocation(shader_program, "uLightDir");
+    prg->lightColorLocation = glGetUniformLocation(shader_program, "uLightColor");
+    prg->eyePosLocation = glGetUniformLocation(shader_program, "uEyePos");
+    prg->lightParamsLocation = glGetUniformLocation(shader_program, "uLightParams");
+    prg->material = cc_features.opt_modern_lighting && cc_features.opt_material && cc_features.usedTextures[0];
+    prg->materialParamsLocation = glGetUniformLocation(shader_program, "uMatParams");
 
     LoadShader(prg);
 
+    if (prg->material) {
+        glUniform1i(glGetUniformLocation(shader_program, "uMatNormal"), MATERIAL_TEXTURE_UNIT + 0);
+        glUniform1i(glGetUniformLocation(shader_program, "uMatRoughnessMetal"), MATERIAL_TEXTURE_UNIT + 1);
+        glUniform1i(glGetUniformLocation(shader_program, "uMatSkin"), MATERIAL_TEXTURE_UNIT + 2);
+    }
     if (cc_features.usedTextures[0]) {
         GLint sampler_location = glGetUniformLocation(shader_program, "uTex0");
         glUniform1i(sampler_location, 0);
@@ -817,17 +880,26 @@ void GfxRenderingAPIOGL::UpdateFramebufferParameters(int fb_id, uint32_t width, 
 
         if (has_depth_buffer &&
             (fb.width != width || fb.height != height || fb.msaa_level != msaa_level || !fb.has_depth_buffer)) {
-            glBindRenderbuffer(GL_RENDERBUFFER, fb.rbo);
             if (msaa_level <= 1) {
-                glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+                // A depth texture (rather than a renderbuffer) lets post passes such as ambient occlusion sample it
+                if (fb.depthTex == 0) {
+                    glGenTextures(1, &fb.depthTex);
+                }
+                glBindTexture(GL_TEXTURE_2D, fb.depthTex);
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, width, height, 0, GL_DEPTH_STENCIL,
+                             GL_UNSIGNED_INT_24_8, NULL);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+                glBindTexture(GL_TEXTURE_2D, 0);
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, fb.depthTex, 0);
             } else {
+                glBindRenderbuffer(GL_RENDERBUFFER, fb.rbo);
                 glRenderbufferStorageMultisample(GL_RENDERBUFFER, msaa_level, GL_DEPTH24_STENCIL8, width, height);
+                glBindRenderbuffer(GL_RENDERBUFFER, 0);
+                glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, fb.rbo);
             }
-            glBindRenderbuffer(GL_RENDERBUFFER, 0);
-        }
-
-        if (!fb.has_depth_buffer && has_depth_buffer) {
-            glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, fb.rbo);
         } else if (fb.has_depth_buffer && !has_depth_buffer) {
             glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, 0);
         }
@@ -1100,6 +1172,286 @@ FilteringMode GfxRenderingAPIOGL::GetTextureFilter() {
 
 void GfxRenderingAPIOGL::SetSrgbMode() {
     mSrgbMode = true;
+}
+
+bool GfxRenderingAPIOGL::SupportsModernLighting() {
+    return true;
+}
+
+static GLuint CreateMaterialTextureObject(const uint8_t* rgba, uint32_t width, uint32_t height, bool mipmaps) {
+    GLuint id;
+    glGenTextures(1, &id);
+    glActiveTexture(GL_TEXTURE0 + MATERIAL_TEXTURE_UNIT);
+    glBindTexture(GL_TEXTURE_2D, id);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+    if (mipmaps) {
+        glGenerateMipmap(GL_TEXTURE_2D);
+    }
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, mipmaps ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    return id;
+}
+
+uint32_t GfxRenderingAPIOGL::CreateMaterialTexture(const uint8_t* rgba32Buf, uint32_t width, uint32_t height) {
+    GLuint id = CreateMaterialTextureObject(rgba32Buf, width, height, true);
+    if (mLastActiveTexture >= 0) {
+        glActiveTexture(GL_TEXTURE0 + mLastActiveTexture);
+    }
+    return id;
+}
+
+void GfxRenderingAPIOGL::UpdateMaterialTexture(uint32_t textureId, const uint8_t* rgba32Buf, uint32_t width,
+                                               uint32_t height) {
+    glActiveTexture(GL_TEXTURE0 + MATERIAL_TEXTURE_UNIT);
+    glBindTexture(GL_TEXTURE_2D, textureId);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba32Buf);
+    glGenerateMipmap(GL_TEXTURE_2D);
+    if (mLastActiveTexture >= 0) {
+        glActiveTexture(GL_TEXTURE0 + mLastActiveTexture);
+    }
+}
+
+void GfxRenderingAPIOGL::SetMaterialState(const MaterialState& state) {
+    if (mMaterialDefaultTex[0] == 0) {
+        const uint8_t flatNormal[4] = { 128, 128, 255, 255 };
+        const uint8_t white[4] = { 255, 255, 255, 255 };
+        const uint8_t black[4] = { 0, 0, 0, 255 };
+        mMaterialDefaultTex[0] = CreateMaterialTextureObject(flatNormal, 1, 1, false);
+        mMaterialDefaultTex[1] = CreateMaterialTextureObject(white, 1, 1, false);
+        mMaterialDefaultTex[2] = CreateMaterialTextureObject(black, 1, 1, false);
+        if (mLastActiveTexture >= 0) {
+            glActiveTexture(GL_TEXTURE0 + mLastActiveTexture);
+        }
+    }
+    mMaterialState = state;
+}
+
+void GfxRenderingAPIOGL::SetModernLightingState(const ModernLightingState& state) {
+    mModernLightingState = state;
+    mModernLightingSerial++;
+}
+
+bool GfxRenderingAPIOGL::SupportsAmbientOcclusion() {
+    return true;
+}
+
+bool GfxRenderingAPIOGL::CreateAmbientOcclusionPrograms() {
+    auto init = std::make_shared<Ship::ResourceInitData>();
+    init->Type = (uint32_t)Ship::ResourceType::Shader;
+    init->ByteOrder = Ship::Endianness::Native;
+    init->Format = RESOURCE_FORMAT_BINARY;
+    auto res =
+        std::static_pointer_cast<Ship::Shader>(Ship::Context::GetRawInstance()->GetResourceManager()->LoadResource(
+            "shaders/opengl/ambient_occlusion.glsl", true, init));
+    if (res == nullptr) {
+        SPDLOG_ERROR("Ambient occlusion shader missing from the archives; disabling the effect");
+        return false;
+    }
+    const std::string& body = *static_cast<std::string*>(res->GetRawPointer());
+
+#if defined(USE_OPENGLES)
+    const std::string version = "#version 300 es\n";
+    const std::string fsPrelude = "precision highp float;\nout vec4 aoFragColor;\n#define FRAG_OUT aoFragColor\n";
+#elif defined(__APPLE__)
+    const std::string version = "#version 410 core\n";
+    const std::string fsPrelude = "out vec4 aoFragColor;\n#define FRAG_OUT aoFragColor\n";
+#else
+    const std::string version = "#version 130\n";
+    const std::string fsPrelude = "#define FRAG_OUT gl_FragColor\n";
+#endif
+
+    auto compile = [](GLenum type, const std::string& src) -> GLuint {
+        GLuint shader = glCreateShader(type);
+        const GLchar* text = src.c_str();
+        glShaderSource(shader, 1, &text, nullptr);
+        glCompileShader(shader);
+        GLint ok = 0;
+        glGetShaderiv(shader, GL_COMPILE_STATUS, &ok);
+        if (!ok) {
+            char log[1024];
+            glGetShaderInfoLog(shader, sizeof(log), nullptr, log);
+            SPDLOG_ERROR("Ambient occlusion shader failed to compile: {}", log);
+            glDeleteShader(shader);
+            return 0;
+        }
+        return shader;
+    };
+    auto link = [&](const char* passDefine, AoProgram& prg) -> bool {
+        GLuint vsId = compile(GL_VERTEX_SHADER, version + "#define VERTEX_SHADER\n" + body);
+        GLuint fsId = compile(GL_FRAGMENT_SHADER, version + fsPrelude + "#define " + passDefine + "\n" + body);
+        if (vsId == 0 || fsId == 0) {
+            return false;
+        }
+        GLuint program = glCreateProgram();
+        glAttachShader(program, vsId);
+        glAttachShader(program, fsId);
+        glLinkProgram(program);
+        glDeleteShader(vsId);
+        glDeleteShader(fsId);
+        GLint linked = 0;
+        glGetProgramiv(program, GL_LINK_STATUS, &linked);
+        if (!linked) {
+            SPDLOG_ERROR("Ambient occlusion shader ({}) failed to link", passDefine);
+            glDeleteProgram(program);
+            return false;
+        }
+        prg.id = program;
+        prg.pos = glGetAttribLocation(program, "aPos");
+        prg.depth = glGetUniformLocation(program, "uDepth");
+        prg.proj = glGetUniformLocation(program, "uProj");
+        prg.params = glGetUniformLocation(program, "uParams");
+        prg.texel = glGetUniformLocation(program, "uTexel");
+        prg.ao = glGetUniformLocation(program, "uAo");
+        prg.aoTexel = glGetUniformLocation(program, "uAoTexel");
+        return true;
+    };
+    return link("AO_PASS", mAoPass) && link("BLUR_PASS", mAoBlurPass);
+}
+
+void GfxRenderingAPIOGL::ApplyAmbientOcclusion(const AmbientOcclusionParams& params) {
+    FramebufferOGL& fb = mFrameBuffers[mCurrentFrameBuffer];
+    if (mCurrentFrameBuffer == 0 || fb.depthTex == 0 || fb.msaa_level > 1 || mAoProgramFailed) {
+        return;
+    }
+    if (mAoPass.id == 0 && !CreateAmbientOcclusionPrograms()) {
+        mAoProgramFailed = true;
+        return;
+    }
+
+    // Half-resolution occlusion target
+    const uint32_t aoWidth = std::max(fb.width / 2, 1u);
+    const uint32_t aoHeight = std::max(fb.height / 2, 1u);
+    if (mAoFbo == 0) {
+        glGenFramebuffers(1, &mAoFbo);
+        glGenTextures(1, &mAoTex);
+    }
+    glActiveTexture(GL_TEXTURE7);
+    if (mAoWidth != aoWidth || mAoHeight != aoHeight) {
+        glBindTexture(GL_TEXTURE_2D, mAoTex);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, aoWidth, aoHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glBindFramebuffer(GL_FRAMEBUFFER, mAoFbo);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mAoTex, 0);
+        mAoWidth = aoWidth;
+        mAoHeight = aoHeight;
+    }
+
+    // The depth texture can't be sampled while it is attached to the target, so detach it for the passes
+    glBindFramebuffer(GL_FRAMEBUFFER, fb.fbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, 0, 0);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_SCISSOR_TEST);
+    glDisable(GL_POLYGON_OFFSET_FILL);
+    glDisable(GL_BLEND);
+
+    if (mLastLoadedShader != nullptr) {
+        for (int i = 0; i < mLastLoadedShader->numAttribs; i++) {
+            if (mLastLoadedShader->attribLocations[i] >= 0) {
+                glDisableVertexAttribArray(mLastLoadedShader->attribLocations[i]);
+            }
+        }
+    }
+
+#if defined(USE_OPENGLES)
+    // The GLES vertex shader compresses depth by 0.3 (see default.shader.glsl)
+    const float depthScale = 1.0f / 0.3f;
+#else
+    const float depthScale = 1.0f;
+#endif
+    static const float fullscreenTriangle[] = { -1.0f, -1.0f, 3.0f, -1.0f, -1.0f, 3.0f };
+    glBufferData(GL_ARRAY_BUFFER, sizeof(fullscreenTriangle), fullscreenTriangle, GL_STREAM_DRAW);
+
+    auto draw = [&](const AoProgram& prg) {
+        glUseProgram(prg.id);
+        glUniform1i(prg.depth, 7);
+        glUniform1i(prg.ao, 6);
+        glUniform4f(prg.proj, params.invP00, params.invP11, params.depthA, params.depthB);
+        glUniform4f(prg.params, params.radius, params.intensity, params.bias, depthScale);
+        glUniform2f(prg.texel, 1.0f / fb.width, 1.0f / fb.height);
+        glUniform2f(prg.aoTexel, 1.0f / aoWidth, 1.0f / aoHeight);
+        glEnableVertexAttribArray(prg.pos);
+        glVertexAttribPointer(prg.pos, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+        glDisableVertexAttribArray(prg.pos);
+    };
+
+    glActiveTexture(GL_TEXTURE7);
+    glBindTexture(GL_TEXTURE_2D, fb.depthTex);
+
+    // Pass 1: occlusion into the half-resolution target
+    glBindFramebuffer(GL_FRAMEBUFFER, mAoFbo);
+    glViewport(0, 0, aoWidth, aoHeight);
+    draw(mAoPass);
+
+    // Pass 2: depth-aware blur, multiplied into the scene (or written as-is for the debug view)
+    glBindFramebuffer(GL_FRAMEBUFFER, fb.fbo);
+    glViewport(0, 0, fb.width, fb.height);
+    glActiveTexture(GL_TEXTURE6);
+    glBindTexture(GL_TEXTURE_2D, mAoTex);
+    if (!params.debugView) {
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_ZERO, GL_SRC_COLOR);
+    }
+    draw(mAoBlurPass);
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glActiveTexture(GL_TEXTURE7);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glActiveTexture(GL_TEXTURE0 + std::max<int>(mLastActiveTexture, 0));
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, fb.depthTex, 0);
+
+    // Restore the state the triangle path caches so the next draw re-applies it
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    if (mLastBlendEnabled == 1) {
+        glEnable(GL_BLEND);
+    } else {
+        glDisable(GL_BLEND);
+    }
+    glEnable(GL_SCISSOR_TEST);
+    mLastScissorEnabled = 1;
+    mLastDepthTest = -1;
+    mLastDepthMask = -1;
+    mLastZmodeDecal = -1;
+    if (mLastLoadedShader != nullptr) {
+        glUseProgram(mLastLoadedShader->openglProgramId);
+        VertexArraySetAttribs(mLastLoadedShader);
+    }
+}
+
+bool GfxRenderingAPIOGL::ReadFramebufferRGBA8(int fbId, uint32_t& width, uint32_t& height, std::vector<uint8_t>& out) {
+    if (fbId < 0 || (size_t)fbId >= mFrameBuffers.size()) {
+        return false;
+    }
+    const FramebufferOGL& fb = mFrameBuffers[fbId];
+    if (fb.msaa_level > 1 || fb.width == 0 || fb.height == 0) {
+        return false;
+    }
+    width = fb.width;
+    height = fb.height;
+    out.resize((size_t)width * height * 4);
+    glBindFramebuffer(GL_FRAMEBUFFER, fb.fbo);
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, out.data());
+    glBindFramebuffer(GL_FRAMEBUFFER, mFrameBuffers[mCurrentFrameBuffer].fbo);
+
+    // GL rows start at the bottom; render targets drawn with invertY are already top-down
+    if (!fb.invertY) {
+        const size_t rowBytes = (size_t)width * 4;
+        std::vector<uint8_t> row(rowBytes);
+        for (uint32_t y = 0; y < height / 2; y++) {
+            uint8_t* a = out.data() + y * rowBytes;
+            uint8_t* b = out.data() + (height - 1 - y) * rowBytes;
+            memcpy(row.data(), a, rowBytes);
+            memcpy(a, b, rowBytes);
+            memcpy(b, row.data(), rowBytes);
+        }
+    }
+    return true;
 }
 
 ImTextureID GfxRenderingAPIOGL::GetTextureById(int id) {

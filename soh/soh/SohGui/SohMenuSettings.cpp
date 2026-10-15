@@ -8,6 +8,7 @@
 #include "UIWidgets.hpp"
 #include <ship/controller/controldeck/ControlDeck.h>
 #include <ship/Context.h>
+#include <fast/ModernRenderingCVars.h>
 
 extern "C" {
 #include "include/z64audio.h"
@@ -428,6 +429,93 @@ void SohMenu::AddMenuSettings() {
         .CVar(CVAR_TEXTURE_FILTER)
         .RaceDisable(false)
         .Options(ComboboxOptions().Tooltip("Sets the applied Texture Filtering.").ComboMap(textureFilteringMap));
+
+    AddWidget(path, "Modern Rendering", WIDGET_SEPARATOR_TEXT);
+    AddWidget(path, "Per-Pixel Lighting", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_MODERN_LIGHTING)
+        .RaceDisable(false)
+        .Options(CheckboxOptions()
+                     .Tooltip("Lights characters, items and weapons per pixel instead of per vertex, with specular "
+                              "highlights and rim light. Uses the game's own light directions and colors. "
+                              "OpenGL renderer only.")
+                     .DefaultValue(true));
+    auto hideWithoutModernLighting = [](WidgetInfo& info) { info.isHidden = !CVarGetInteger(CVAR_MODERN_LIGHTING, 1); };
+    AddWidget(path, "Light Wrap: %.2f", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar(CVAR_MODERN_LIGHTING_WRAP)
+        .RaceDisable(false)
+        .PreFunc(hideWithoutModernLighting)
+        .Options(FloatSliderOptions()
+                     .Tooltip("Softens the light falloff on the shadowed side of models. 0 matches the N64.")
+                     .Min(0.0f)
+                     .Max(1.0f)
+                     .DefaultValue(0.25f)
+                     .Format("%.2f"));
+    AddWidget(path, "Specular Strength: %.2f", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar(CVAR_MODERN_LIGHTING_SPECULAR)
+        .RaceDisable(false)
+        .PreFunc(hideWithoutModernLighting)
+        .Options(FloatSliderOptions()
+                     .Tooltip("Brightness of light highlights on characters, items and weapons.")
+                     .Min(0.0f)
+                     .Max(2.0f)
+                     .DefaultValue(0.2f)
+                     .Format("%.2f"));
+    AddWidget(path, "Specular Sharpness: %.0f", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar(CVAR_MODERN_LIGHTING_SHININESS)
+        .RaceDisable(false)
+        .PreFunc(hideWithoutModernLighting)
+        .Options(FloatSliderOptions()
+                     .Tooltip("Higher values give smaller, glossier highlights.")
+                     .Min(2.0f)
+                     .Max(128.0f)
+                     .DefaultValue(24.0f)
+                     .Format("%.0f"));
+    AddWidget(path, "Rim Light: %.2f", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar(CVAR_MODERN_LIGHTING_RIM)
+        .RaceDisable(false)
+        .PreFunc(hideWithoutModernLighting)
+        .Options(FloatSliderOptions()
+                     .Tooltip("Edge light that separates characters from the background.")
+                     .Min(0.0f)
+                     .Max(1.0f)
+                     .DefaultValue(0.2f)
+                     .Format("%.2f"));
+    AddWidget(path, "Mod Pack Materials", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_MODERN_MATERIALS)
+        .RaceDisable(false)
+        .PreFunc(hideWithoutModernLighting)
+        .Options(CheckboxOptions()
+                     .Tooltip("Uses normal, roughness-metal, skin and eye materials that mod packs provide "
+                              "for their textures.")
+                     .DefaultValue(true));
+    AddWidget(path, "Ambient Occlusion", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_MODERN_AO)
+        .RaceDisable(false)
+        .Options(CheckboxOptions()
+                     .Tooltip("Darkens creases, corners and contact points using the depth buffer. "
+                              "Not applied while MSAA is above 1. OpenGL renderer only.")
+                     .DefaultValue(true));
+    auto hideWithoutAO = [](WidgetInfo& info) { info.isHidden = !CVarGetInteger(CVAR_MODERN_AO, 1); };
+    AddWidget(path, "Occlusion Radius: %.0f", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar(CVAR_MODERN_AO_RADIUS)
+        .RaceDisable(false)
+        .PreFunc(hideWithoutAO)
+        .Options(FloatSliderOptions()
+                     .Tooltip("How far, in game units, surfaces shadow each other.")
+                     .Min(5.0f)
+                     .Max(150.0f)
+                     .DefaultValue(70.0f)
+                     .Format("%.0f"));
+    AddWidget(path, "Occlusion Strength: %.2f", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar(CVAR_MODERN_AO_INTENSITY)
+        .RaceDisable(false)
+        .PreFunc(hideWithoutAO)
+        .Options(FloatSliderOptions().Min(0.0f).Max(4.0f).DefaultValue(2.0f).Format("%.2f"));
+    AddWidget(path, "Show Occlusion Only", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_MODERN_AO_DEBUG)
+        .RaceDisable(false)
+        .PreFunc(hideWithoutAO)
+        .Options(CheckboxOptions().Tooltip("Debug view: shows the occlusion term instead of the scene."));
 
     path.column = SECTION_COLUMN_2;
     AddWidget(path, "Advanced Graphics Options", WIDGET_SEPARATOR_TEXT);

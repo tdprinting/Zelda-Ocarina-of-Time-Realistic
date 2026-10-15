@@ -3,6 +3,11 @@
 namespace Fast {
 #define OPCODE(x) (int8_t)(x)
 
+// G_NOOP type the game emits after its opaque geometry (see gDPNoOpOpaqueEnd in gbi.h)
+#ifndef G_NOOP_TYPE_OPAQUE_END
+#define G_NOOP_TYPE_OPAQUE_END 0x40
+#endif
+
 #include "f3dex.h"
 #include "f3dex2.h"
 

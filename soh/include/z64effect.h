@@ -8,11 +8,12 @@ struct PlayState;
 
 /* Effects */
 
-#define SPARK_COUNT 3
-#define BLURE_COUNT 25
-#define SHIELD_PARTICLE_COUNT 3
+// Raised from 3 / 25 / 3 so more sparks, sword trails and shield particles can run at once
+#define SPARK_COUNT 16
+#define BLURE_COUNT 64
+#define SHIELD_PARTICLE_COUNT 16
 
-#define TOTAL_EFFECT_COUNT SPARK_COUNT + BLURE_COUNT + SHIELD_PARTICLE_COUNT
+#define TOTAL_EFFECT_COUNT (SPARK_COUNT + BLURE_COUNT + SHIELD_PARTICLE_COUNT)
 
 typedef enum {
     TRAIL_TYPE_REST,

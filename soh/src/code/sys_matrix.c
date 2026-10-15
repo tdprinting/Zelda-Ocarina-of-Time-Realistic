@@ -23,13 +23,16 @@ MtxF gMtxFClear = {
 static MtxF* sMatrixStack;   // "Matrix_stack"
 static MtxF* sCurrentMatrix; // "Matrix_now"
 
+// Raised from 20 for deeper custom skeletons
+#define MATRIX_STACK_SIZE 32
+
 void Matrix_SaveState(SaveStateCtx* ctx) {
-    SaveState_Blob(ctx, sMatrixStack, sizeof(MtxF) * 20);
+    SaveState_Blob(ctx, sMatrixStack, sizeof(MtxF) * MATRIX_STACK_SIZE);
     SaveState_Blob(ctx, sCurrentMatrix, sizeof(MtxF));
 }
 
 void Matrix_Init(GameState* gameState) {
-    sCurrentMatrix = GAMESTATE_ALLOC_MC(gameState, 20 * sizeof(MtxF));
+    sCurrentMatrix = GAMESTATE_ALLOC_MC(gameState, MATRIX_STACK_SIZE * sizeof(MtxF));
     sMatrixStack = sCurrentMatrix;
 }
 

@@ -1,0 +1,91 @@
+{
+  "warmupTicks": 100,
+  "settleTicks": 4,
+  "cvars": {
+    "gSettings.ModernRendering.AmbientOcclusionDebug": 0
+  },
+  "scenes": [
+    {
+      "name": "links-house",
+      "entrance": 187,
+      "age": "child",
+      "dayTime": 32768
+    },
+    {
+      "name": "kokiri-forest",
+      "entrance": 238,
+      "age": "child",
+      "dayTime": 32768
+    },
+    {
+      "name": "kakariko",
+      "entrance": 219,
+      "age": "adult",
+      "dayTime": 32768
+    },
+    {
+      "name": "hyrule-field",
+      "entrance": 205,
+      "age": "adult",
+      "dayTime": 32768
+    },
+    {
+      "name": "zoras-domain",
+      "entrance": 264,
+      "age": "child",
+      "dayTime": 32768
+    }
+  ],
+  "variants": [
+    {
+      "name": "vanilla",
+      "cvars": {
+        "gSettings.ModernRendering.Lighting": 0,
+        "gSettings.ModernRendering.AmbientOcclusion": 0
+      }
+    },
+    {
+      "name": "lighting-neutral",
+      "cvars": {
+        "gSettings.ModernRendering.Lighting": 1,
+        "gSettings.ModernRendering.AmbientOcclusion": 0,
+        "gSettings.ModernRendering.LightingWrap": 0.0,
+        "gSettings.ModernRendering.LightingSpecular": 0.0,
+        "gSettings.ModernRendering.LightingRim": 0.0
+      }
+    },
+    {
+      "name": "lighting",
+      "cvars": {
+        "gSettings.ModernRendering.Lighting": 1,
+        "gSettings.ModernRendering.AmbientOcclusion": 0,
+        "gSettings.ModernRendering.LightingWrap": 0.25,
+        "gSettings.ModernRendering.LightingSpecular": 0.2,
+        "gSettings.ModernRendering.LightingRim": 0.2
+      }
+    },
+    {
+      "name": "ao",
+      "cvars": {
+        "gSettings.ModernRendering.Lighting": 0,
+        "gSettings.ModernRendering.AmbientOcclusion": 1
+      }
+    },
+    {
+      "name": "ao-only",
+      "cvars": {
+        "gSettings.ModernRendering.Lighting": 0,
+        "gSettings.ModernRendering.AmbientOcclusion": 1,
+        "gSettings.ModernRendering.AmbientOcclusionDebug": 1
+      }
+    },
+    {
+      "name": "all",
+      "cvars": {
+        "gSettings.ModernRendering.Lighting": 1,
+        "gSettings.ModernRendering.AmbientOcclusion": 1,
+        "gSettings.ModernRendering.AmbientOcclusionDebug": 0
+      }
+    }
+  ]
+}

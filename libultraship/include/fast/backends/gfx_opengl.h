@@ -30,8 +30,8 @@ struct ShaderProgram {
     uint8_t numInputs;
     bool usedTextures[SHADER_MAX_TEXTURES];
     uint8_t numFloats;
-    GLint attribLocations[16];
-    uint8_t attribSizes[16];
+    GLint attribLocations[20];
+    uint8_t attribSizes[20];
     uint8_t numAttribs;
     GLint frameCountLocation;
     GLint noiseScaleLocation;
@@ -39,6 +39,16 @@ struct ShaderProgram {
     GLint texture_width_location;
     GLint texture_height_location;
     GLint texture_filtering_location;
+    bool modernLighting;
+    uint32_t modernLightingSerial;
+    GLint lightAmbientLocation;
+    GLint lightCountLocation;
+    GLint lightDirLocation;
+    GLint lightColorLocation;
+    GLint eyePosLocation;
+    GLint lightParamsLocation;
+    bool material;
+    GLint materialParamsLocation;
 };
 
 struct FramebufferOGL {
@@ -48,6 +58,8 @@ struct FramebufferOGL {
     bool invertY;
 
     GLuint fbo, clrbuf, clrbufMsaa, rbo;
+    // Sampleable depth used instead of rbo when the framebuffer is not multisampled
+    GLuint depthTex;
 };
 
 struct TextureInfo {
@@ -104,6 +116,14 @@ class GfxRenderingAPIOGL final : public GfxRenderingAPI {
     FilteringMode GetTextureFilter() override;
     void SetSrgbMode() override;
     ImTextureID GetTextureById(int id) override;
+    bool SupportsModernLighting() override;
+    void SetModernLightingState(const ModernLightingState& state) override;
+    uint32_t CreateMaterialTexture(const uint8_t* rgba32Buf, uint32_t width, uint32_t height) override;
+    void UpdateMaterialTexture(uint32_t textureId, const uint8_t* rgba32Buf, uint32_t width, uint32_t height) override;
+    void SetMaterialState(const MaterialState& state) override;
+    bool ReadFramebufferRGBA8(int fbId, uint32_t& width, uint32_t& height, std::vector<uint8_t>& out) override;
+    bool SupportsAmbientOcclusion() override;
+    void ApplyAmbientOcclusion(const AmbientOcclusionParams& params) override;
 
   private:
     void SetUniforms(ShaderProgram* prg) const;
@@ -118,7 +138,26 @@ class GfxRenderingAPIOGL final : public GfxRenderingAPI {
     int8_t mLastBlendEnabled = -1;
     int8_t mLastScissorEnabled = -1;
 
-    std::map<std::pair<uint64_t, uint32_t>, ShaderProgram> mShaderProgramPool;
+    std::map<std::pair<uint64_t, uint64_t>, ShaderProgram> mShaderProgramPool;
+    ModernLightingState mModernLightingState = {};
+    MaterialState mMaterialState = {};
+    // Neutral stand-ins for maps a material doesn't provide: flat normal, white roughness-metal, no skin
+    GLuint mMaterialDefaultTex[3] = {};
+    // Starts at 1 so freshly created programs (serial 0) always receive the current state
+    uint32_t mModernLightingSerial = 1;
+
+    struct AoProgram {
+        GLuint id = 0;
+        GLint pos = -1, depth = -1, proj = -1, params = -1, texel = -1, ao = -1, aoTexel = -1;
+    };
+    bool CreateAmbientOcclusionPrograms();
+    AoProgram mAoPass;
+    AoProgram mAoBlurPass;
+    bool mAoProgramFailed = false;
+    GLuint mAoFbo = 0;
+    GLuint mAoTex = 0;
+    uint32_t mAoWidth = 0;
+    uint32_t mAoHeight = 0;
     ShaderProgram* mCurrentShaderProgram;
     ShaderProgram* mLastLoadedShader = nullptr;
 

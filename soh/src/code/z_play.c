@@ -391,7 +391,8 @@ void Play_Init(GameState* thisx) {
     // OTRTODO allocate double the normal amount of memory
     // This is to avoid some parts of the game, like loading actors, causing OoM
     // This is potionally unavoidable due to struct size differences, but is x2 the right amount?
-    GameState_Realloc(&play->state, 0x1D4790 * 2);
+    // Raised further (x6) so actor- and effect-heavy mods have arena headroom; SYSTEM_HEAP_SIZE matches
+    GameState_Realloc(&play->state, 0x1D4790 * 6);
     KaleidoManager_Init(play);
     View_Init(&play->view, gfxCtx);
     Audio_SetExtraFilter(0);
@@ -419,7 +420,8 @@ void Play_Init(GameState* thisx) {
     GameOver_Init(play);
     SoundSource_InitAll(play);
     Effect_InitContext(play);
-    EffectSs_InitInfo(play, 0x55);
+    // Soft-sprite particle slots, raised from 0x55 (85) so busy scenes and particle mods don't drop effects
+    EffectSs_InitInfo(play, 512);
     CollisionCheck_InitContext(play, &play->colChkCtx);
     AnimationContext_Reset(&play->animationCtx);
     func_8006450C(play, &play->csCtx);

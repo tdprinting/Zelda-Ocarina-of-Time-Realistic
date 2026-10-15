@@ -11,6 +11,8 @@
 #include <string>
 #include <string_view>
 #include <memory>
+#include <mutex>
+#include <set>
 
 #include "fast/lus_gbi.h"
 #include "fast/types.h"
@@ -85,6 +87,17 @@ enum class ShaderOpts {
 };
 
 #define SHADER_OPT(opt) ((uint64_t)(1 << static_cast<int>(ShaderOpts::opt)))
+
+// Modern rendering options live above the 16-bit prism shader id (bits 17..32).
+// MODERN_LIGHTING: the draw carries per-vertex world normals/positions and is lit per pixel.
+// SHADE_INPUT_MASK: which combiner RGB inputs (1..7) read SHADE, so the shader can replace them.
+#define SHADER_OPT_MODERN_LIGHTING ((uint64_t)1 << 33)
+#define SHADER_OPT_SHADE_INPUT_SHIFT 34
+#define SHADER_OPT_SHADE_INPUT_MASK ((uint64_t)0x7F << SHADER_OPT_SHADE_INPUT_SHIFT)
+// Draws whose base texture has a material (normal / roughness-metal / skin maps) from a mod pack
+#define SHADER_OPT_MATERIAL ((uint64_t)1 << 41)
+// The material is an eye: wet cornea highlight and catchlight, no rim light
+#define SHADER_OPT_MATERIAL_EYE ((uint64_t)1 << 42)
 #endif
 
 struct ColorCombinerKey {
@@ -113,6 +126,10 @@ struct CCFeatures {
     bool opt_invisible;
     bool opt_grayscale;
     bool opt_prim_depth;
+    bool opt_modern_lighting;
+    bool shade_input[7];
+    bool opt_material;
+    bool opt_material_eye;
     bool usedTextures[2];
     bool used_masks[2];
     bool used_blend[2];
@@ -219,6 +236,9 @@ struct LoadedVertex {
     float u, v;
     struct RGBA color;
     uint8_t clip_rej;
+    // World-space normal and position, filled for lit vertices (G_LIGHTING) for modern per-pixel lighting
+    float nx, ny, nz;
+    float wx, wy, wz;
 };
 
 struct RawTexMetadata {
@@ -229,10 +249,13 @@ struct RawTexMetadata {
 };
 
 #define MAX_LIGHTS 32
-#define MAX_VERTICES 64
+// Raised from 64: the GBI can address up to 128 loaded vertices, which HD model packs use
+#define MAX_VERTICES 128
+// Raised from 11 for deeper custom skeletons
+#define MAX_MATRIX_STACK_SIZE 32
 
 struct RSP {
-    float modelview_matrix_stack[11][4][4];
+    float modelview_matrix_stack[MAX_MATRIX_STACK_SIZE][4][4];
     uint8_t modelview_matrix_stack_size;
 
     float MP_matrix[4][4];
@@ -556,6 +579,66 @@ class Interpreter {
 
     const std::unordered_map<Mtx*, MtxF>* mCurMtxReplacements;
     bool mMarkerOn; // This was originally a debug feature. Now it seems to control s2dex?
+
+    // Saves the next rendered game frame (before the GUI is drawn) as a binary PPM. Used by render tests.
+    void RequestFrameCapture(const std::string& path);
+    std::string mPendingCapturePath;
+
+    // Modern rendering: per-pixel lighting state, refreshed when N64 lights or the projection change
+    void UpdateModernLightingSettings();
+    bool UseModernLighting(bool isRect) const;
+    void UploadModernLightingIfDirty();
+    bool mModernLightingEnabled = false;
+    bool mModernLightingDirty = true;
+    float mModernLightingParams[4] = {};
+    // Level geometry (drawn with an identity model matrix) keeps the vanilla look: its textures already
+    // carry baked shading, so it gets per-pixel diffuse only, without wrap, specular or rim
+    bool mModernLightingWorldGeometry = false;
+
+    // Materials from mod packs: JSON manifests under materials/ map a base texture's resource path to
+    // normal, roughness-metal and skin-mask maps (see docs/modern-rendering/MATERIALS.md)
+    struct MaterialDef {
+        std::string normal, roughnessMetal, skinMask;
+        bool eye = false;
+        float roughness = 1.0f, metalness = 1.0f, normalStrength = 1.0f, skin = 1.0f;
+    };
+    struct LoadedMaterial {
+        MaterialState state;
+        bool eye;
+    };
+    void LoadMaterialManifests();
+    const LoadedMaterial* ResolveMaterial(Fast::Texture* resource);
+    const LoadedMaterial* FindMaterial(Fast::Texture* resource);
+    uint32_t LoadMaterialMap(const std::string& path);
+    bool ReadMaterialMap(const std::string& path, std::vector<uint8_t>& rgba, uint32_t& width, uint32_t& height);
+    // Re-uploads a material map (by its path in the manifest) at the start of the next frame, for mods that
+    // rewrite a map's pixels at runtime. Safe to call from any thread.
+    void RequestMaterialMapRefresh(const std::string& path);
+    void ProcessMaterialMapRefreshes();
+    std::unordered_map<std::string, uint32_t> mMaterialMapIds;
+    std::set<std::string> mMaterialRefreshQueue;
+    std::mutex mMaterialRefreshMutex;
+    bool mMaterialManifestsLoaded = false;
+    bool mModernMaterialsEnabled = true;
+    std::unordered_map<std::string, MaterialDef> mMaterialDefs;
+    std::unordered_map<std::string, std::unique_ptr<LoadedMaterial>> mLoadedMaterials;
+    Fast::Texture* mMaterialLastResource = nullptr;
+    const LoadedMaterial* mMaterialLastResult = nullptr;
+    const LoadedMaterial* mCurrentMaterial = nullptr;
+    const LoadedMaterial* mBoundMaterial = nullptr;
+    float mEyePos[3] = {};
+    bool mEyePosDirty = true;
+    ModernLightingState mModernLightingState = {};
+
+    // Modern rendering: ambient occlusion after the opaque pass (signalled by a G_NOOP marker from the game)
+    void OnOpaquePassEnd();
+    bool mModernAOEnabled = false;
+    bool mModernAODebug = false;
+    float mModernAORadius = 0.0f;
+    float mModernAOIntensity = 0.0f;
+    float mSceneProjection[4][4] = {};
+    bool mSceneProjectionValid = false;
+    bool mSceneProjectionDirty = true;
     std::unordered_map<size_t, const char*> mShaders;
 
     typedef size_t ShaderId;
