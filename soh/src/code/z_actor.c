@@ -18,6 +18,7 @@
 #include "soh/ActorDB.h"
 #include "soh/OTRGlobals.h"
 #include "soh/ShipUtils.h"
+#include "soh/Enhancements/ModernAnimation/ModernAnimation.h"
 
 #include <string.h>
 #include <stdlib.h>
@@ -4400,7 +4401,7 @@ void Npc_TrackPointWithLimits(Actor* actor, NpcInteractInfo* interactInfo, s16 m
     bodyYawDiff = Math_Vec3f_Yaw(&actor->world.pos, &interactInfo->trackPos) - actor->shape.rot.y;
 
     temp = CLAMP(bodyYawDiff, -maxHeadYaw, maxHeadYaw);
-    Math_SmoothStepToS(&interactInfo->headRot.y, temp, 6, 2000, 1);
+    ModernAnim_SmoothTrackToS(&interactInfo->headRot.y, temp, 6, 2000, 1);
 
     temp = (ABS(bodyYawDiff) >= 0x8000) ? 0 : ABS(bodyYawDiff);
     interactInfo->headRot.y = CLAMP(interactInfo->headRot.y, -temp, temp);
@@ -4408,22 +4409,22 @@ void Npc_TrackPointWithLimits(Actor* actor, NpcInteractInfo* interactInfo, s16 m
     bodyYawDiff -= interactInfo->headRot.y;
 
     temp = CLAMP(bodyYawDiff, -maxTorsoYaw, maxTorsoYaw);
-    Math_SmoothStepToS(&interactInfo->torsoRot.y, temp, 6, 2000, 1);
+    ModernAnim_SmoothTrackToS(&interactInfo->torsoRot.y, temp, 6, 2000, 1);
 
     temp = (ABS(bodyYawDiff) >= 0x8000) ? 0 : ABS(bodyYawDiff);
     interactInfo->torsoRot.y = CLAMP(interactInfo->torsoRot.y, -temp, temp);
 
     if (rotateYaw) {
-        Math_SmoothStepToS(&actor->shape.rot.y, yawTowardsTarget, 6, 2000, 1);
+        ModernAnim_SmoothTrackToS(&actor->shape.rot.y, yawTowardsTarget, 6, 2000, 1);
     }
 
     temp = CLAMP(pitchTowardsTarget, minHeadPitch, (s16)(u16)maxHeadPitch);
-    Math_SmoothStepToS(&interactInfo->headRot.x, temp, 6, 2000, 1);
+    ModernAnim_SmoothTrackToS(&interactInfo->headRot.x, temp, 6, 2000, 1);
 
     torsoPitch = pitchTowardsTarget - interactInfo->headRot.x;
 
     temp = CLAMP(torsoPitch, minTorsoPitch, maxTorsoPitch);
-    Math_SmoothStepToS(&interactInfo->torsoRot.x, temp, 6, 2000, 1);
+    ModernAnim_SmoothTrackToS(&interactInfo->torsoRot.x, temp, 6, 2000, 1);
 }
 
 s16 Npc_GetTrackingPresetMaxPlayerYaw(s16 presetIndex) {
@@ -6395,10 +6396,10 @@ s32 func_80037D98(PlayState* play, Actor* actor, s16 arg2, s32* arg3) {
 }
 
 s32 Actor_TrackNone(Vec3s* arg0, Vec3s* arg1) {
-    Math_SmoothStepToS(&arg0->y, 0, 6, 6200, 100);
-    Math_SmoothStepToS(&arg0->x, 0, 6, 6200, 100);
-    Math_SmoothStepToS(&arg1->y, 0, 6, 6200, 100);
-    Math_SmoothStepToS(&arg1->x, 0, 6, 6200, 100);
+    ModernAnim_SmoothTrackToS(&arg0->y, 0, 6, 6200, 100);
+    ModernAnim_SmoothTrackToS(&arg0->x, 0, 6, 6200, 100);
+    ModernAnim_SmoothTrackToS(&arg1->y, 0, 6, 6200, 100);
+    ModernAnim_SmoothTrackToS(&arg1->x, 0, 6, 6200, 100);
     return true;
 }
 
@@ -6410,17 +6411,17 @@ s32 Actor_TrackPoint(Actor* actor, Vec3f* arg1, Vec3s* arg2, Vec3s* arg3) {
     sp36 = Math_Vec3f_Pitch(&actor->focus.pos, arg1);
     sp34 = Math_Vec3f_Yaw(&actor->focus.pos, arg1) - actor->world.rot.y;
 
-    Math_SmoothStepToS(&arg2->x, sp36, 6, 2000, 1);
+    ModernAnim_SmoothTrackToS(&arg2->x, sp36, 6, 2000, 1);
     arg2->x = (arg2->x < -6000) ? -6000 : ((arg2->x > 6000) ? 6000 : arg2->x);
 
-    var = Math_SmoothStepToS(&arg2->y, sp34, 6, 2000, 1);
+    var = ModernAnim_SmoothTrackToS(&arg2->y, sp34, 6, 2000, 1);
     arg2->y = (arg2->y < -8000) ? -8000 : ((arg2->y > 8000) ? 8000 : arg2->y);
 
     if (var && (ABS(arg2->y) < 8000)) {
         return false;
     }
 
-    Math_SmoothStepToS(&arg3->y, sp34 - arg2->y, 4, 2000, 1);
+    ModernAnim_SmoothTrackToS(&arg3->y, sp34 - arg2->y, 4, 2000, 1);
     arg3->y = (arg3->y < -12000) ? -12000 : ((arg3->y > 12000) ? 12000 : arg3->y);
 
     return true;

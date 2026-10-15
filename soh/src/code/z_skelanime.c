@@ -6,6 +6,7 @@
 #include "soh/ResourceManagerHelpers.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include <libultraship/bridge/consolevariablebridge.h>
+#include "soh/Enhancements/ModernAnimation/ModernAnimation.h"
 
 #define ANIM_INTERP 1
 
@@ -827,6 +828,13 @@ void SkelAnime_InterpFrameTable(s32 limbCount, Vec3s* dst, Vec3s* start, Vec3s* 
     s16 diff;
     s16 base;
 
+    // #region SOH [Enhancement] Modern animation: blend limb rotations along the shortest arc
+    if (ModernAnim_QuaternionEnabled()) {
+        ModernAnim_InterpFrameTable(limbCount, dst, start, target, weight);
+        return;
+    }
+    // #endregion
+
     if (weight < 1.0f) {
         for (i = 0; i < limbCount; i++, dst++, start++, target++) {
             base = start->x;
@@ -909,6 +917,23 @@ void AnimationContext_SetLoadFrame(PlayState* play, LinkAnimationHeader* animati
         }
         memcpy(ram, (uintptr_t)animData + (((sizeof(Vec3s) * limbCount + 2) * frame)), sizeof(Vec3s) * limbCount + 2);
     }
+}
+
+/**
+ * SOH [Enhancement] Copies one frame of a Link animation into frameTable without going through the animation
+ * queue (which has a fixed number of entries). Returns false if the animation data is unavailable.
+ */
+static s32 LinkAnimation_LoadFrameDirect(LinkAnimationHeader* animation, s32 frame, s32 limbCount, Vec3s* frameTable) {
+    if (ResourceMgr_OTRSigCheck(animation) != 0) {
+        animation = ResourceMgr_LoadAnimByName(animation);
+    }
+    if (animation == NULL || animation->segment == NULL) {
+        return false;
+    }
+    frame = CLAMP(frame, 0, animation->common.frameCount - 1);
+    memcpy(frameTable, (uintptr_t)animation->segment + (((sizeof(Vec3s) * limbCount + 2) * frame)),
+           sizeof(Vec3s) * limbCount + 2);
+    return true;
 }
 
 /**
@@ -1090,6 +1115,9 @@ void AnimationContext_Update(PlayState* play, AnimationContext* animationCtx) {
 
     sAnimQueueFlags = 1;
     sDisableAnimQueueFlags = 0;
+
+    // SOH [Enhancement] Modern animation: finish cross-fades on skeletons that are no longer updating
+    ModernAnim_FrameEnd(play);
 }
 
 /**
@@ -1107,6 +1135,7 @@ void SkelAnime_InitLink(PlayState* play, SkelAnime* skelAnime, FlexSkeletonHeade
     s32 limbCount;
     size_t allocSize;
 
+    ModernAnim_Forget(skelAnime);
     skelAnime->initFlags = flags;
     limbCount = (flags & 2) ? headerJointCount : 1;
 
@@ -1166,7 +1195,11 @@ void LinkAnimation_SetUpdateFunction(SkelAnime* skelAnime) {
  * finishes.
  */
 s32 LinkAnimation_Update(PlayState* play, SkelAnime* skelAnime) {
-    return skelAnime->update.link(play, skelAnime);
+    s32 ret = skelAnime->update.link(play, skelAnime);
+
+    // SOH [Enhancement] Modern animation: cross-fade out of an instant animation change
+    ModernAnim_PostUpdate(skelAnime);
+    return ret;
 }
 
 /**
@@ -1183,8 +1216,11 @@ s32 LinkAnimation_Morph(PlayState* play, SkelAnime* skelAnime) {
         LinkAnimation_SetUpdateFunction(skelAnime);
     }
 
+    // SOH [Enhancement] Modern animation: ease the morph in and out instead of moving at a constant rate
     AnimationContext_SetInterp(play, skelAnime->limbCount, skelAnime->jointTable, skelAnime->morphTable,
-                               1.0f - (skelAnime->morphWeight / prevMorphWeight));
+                               ModernAnim_EasingEnabled()
+                                   ? ModernAnim_MorphStep(prevMorphWeight, skelAnime->morphWeight)
+                                   : 1.0f - (skelAnime->morphWeight / prevMorphWeight));
     return 0;
 }
 
@@ -1195,6 +1231,18 @@ s32 LinkAnimation_Morph(PlayState* play, SkelAnime* skelAnime) {
 void LinkAnimation_AnimateFrame(PlayState* play, SkelAnime* skelAnime) {
     AnimationContext_SetLoadFrame(play, skelAnime->animation, skelAnime->curFrame, skelAnime->limbCount,
                                   skelAnime->jointTable);
+    // #region SOH [Enhancement] Modern animation: sample between keyframes when playing at fractional speeds
+    // (frame loads are immediate in SoH, so the next keyframe can be blended in right away)
+    if (ModernAnim_SubframeEnabled()) {
+        Vec3s* nextFrame = ModernAnim_ScratchTable();
+
+        if (LinkAnimation_LoadFrameDirect(skelAnime->animation,
+                                          ModernAnim_NextFrame(skelAnime, (s32)skelAnime->curFrame),
+                                          skelAnime->limbCount, nextFrame)) {
+            ModernAnim_ApplySubframe(skelAnime, nextFrame);
+        }
+    }
+    // #endregion
     if (skelAnime->morphWeight != 0) {
         f32 updateRate = R_UPDATE_RATE * 0.5f;
 
@@ -1203,7 +1251,8 @@ void LinkAnimation_AnimateFrame(PlayState* play, SkelAnime* skelAnime) {
             skelAnime->morphWeight = 0.0f;
         } else {
             AnimationContext_SetInterp(play, skelAnime->limbCount, skelAnime->jointTable, skelAnime->morphTable,
-                                       skelAnime->morphWeight);
+                                       ModernAnim_EasingEnabled() ? ModernAnim_MorphRemaining(skelAnime->morphWeight)
+                                                                  : skelAnime->morphWeight);
         }
     }
 }
@@ -1271,6 +1320,9 @@ void LinkAnimation_Change(PlayState* play, SkelAnime* skelAnime, LinkAnimationHe
     if (ResourceMgr_OTRSigCheck(currentAnimation) != 0)
         currentAnimation = ResourceMgr_LoadAnimByName(currentAnimation);
 
+    // SOH [Enhancement] Modern animation: remember the pose on screen so an instant change can cross-fade
+    ModernAnim_BeginChange(skelAnime, animation, currentAnimation, morphFrames, true);
+
     skelAnime->mode = mode;
     if ((morphFrames != 0.0f) && ((animation != currentAnimation) || (startFrame != skelAnime->curFrame))) {
         if (morphFrames < 0) {
@@ -1297,6 +1349,8 @@ void LinkAnimation_Change(PlayState* play, SkelAnime* skelAnime, LinkAnimationHe
     skelAnime->endFrame = endFrame;
     skelAnime->animLength = Animation_GetLength(animation);
     skelAnime->playSpeed = playSpeed;
+
+    ModernAnim_EndChange(skelAnime);
 }
 
 /**
@@ -1454,6 +1508,7 @@ s32 SkelAnime_Init(PlayState* play, SkelAnime* skelAnime, SkeletonHeader* skelet
     SkeletonHeader* skeletonHeader = SEGMENTED_TO_VIRTUAL(skeletonHeaderSeg);
 
     skelAnime->skeletonHeader = skeletonHeader;
+    ModernAnim_Forget(skelAnime);
     skelAnime->limbCount = skeletonHeader->limbCount + 1;
     skelAnime->skeleton = SEGMENTED_TO_VIRTUAL(skeletonHeader->segment);
     if (jointTable == NULL) {
@@ -1486,6 +1541,7 @@ s32 SkelAnime_InitFlex(PlayState* play, SkelAnime* skelAnime, FlexSkeletonHeader
     FlexSkeletonHeader* skeletonHeader = SEGMENTED_TO_VIRTUAL(skeletonHeaderSeg);
 
     skelAnime->skeletonHeader = skeletonHeader;
+    ModernAnim_Forget(skelAnime);
     skelAnime->limbCount = skeletonHeader->sh.limbCount + 1;
     skelAnime->dListCount = skeletonHeader->dListCount;
     skelAnime->skeleton = SEGMENTED_TO_VIRTUAL(skeletonHeader->sh.segment);
@@ -1522,6 +1578,7 @@ s32 SkelAnime_InitSkin(PlayState* play, SkelAnime* skelAnime, SkeletonHeader* sk
     SkeletonHeader* skeletonHeader = SEGMENTED_TO_VIRTUAL(skeletonHeaderSeg);
 
     skelAnime->skeletonHeader = skeletonHeader;
+    ModernAnim_Forget(skelAnime);
     skelAnime->limbCount = skeletonHeader->limbCount + 1;
     skelAnime->skeleton = SEGMENTED_TO_VIRTUAL(skeletonHeader->segment);
     skelAnime->jointTable = ZELDA_ARENA_MALLOC_DEBUG(skelAnime->limbCount * sizeof(*skelAnime->jointTable));
@@ -1556,7 +1613,11 @@ void SkelAnime_SetUpdate(SkelAnime* skelAnime) {
  * finishes.
  */
 s32 SkelAnime_Update(SkelAnime* skelAnime) {
-    return skelAnime->update.normal(skelAnime);
+    s32 ret = skelAnime->update.normal(skelAnime);
+
+    // SOH [Enhancement] Modern animation: cross-fade out of an instant animation change
+    ModernAnim_PostUpdate(skelAnime);
+    return ret;
 }
 
 /**
@@ -1571,8 +1632,11 @@ s32 SkelAnime_Morph(SkelAnime* skelAnime) {
         SkelAnime_SetUpdate(skelAnime);
         skelAnime->morphWeight = 0.0f;
     }
-    SkelAnime_InterpFrameTable(skelAnime->limbCount, skelAnime->jointTable, skelAnime->jointTable,
-                               skelAnime->morphTable, 1.0f - (skelAnime->morphWeight / prevMorphWeight));
+    // SOH [Enhancement] Modern animation: ease the morph in and out instead of moving at a constant rate
+    SkelAnime_InterpFrameTable(
+        skelAnime->limbCount, skelAnime->jointTable, skelAnime->jointTable, skelAnime->morphTable,
+        ModernAnim_EasingEnabled() ? ModernAnim_MorphStep(prevMorphWeight, skelAnime->morphWeight)
+                                   : 1.0f - (skelAnime->morphWeight / prevMorphWeight));
     return 0;
 }
 
@@ -1627,6 +1691,12 @@ void SkelAnime_AnimateFrame(SkelAnime* skelAnime) {
         SkelAnime_GetFrameData(skelAnime->animation, frame, skelAnime->limbCount, nextjointTable);
         SkelAnime_InterpFrameTable(skelAnime->limbCount, skelAnime->jointTable, skelAnime->jointTable, nextjointTable,
                                    partialFrame);
+    } else if (ModernAnim_SubframeEnabled() && skelAnime->limbCount <= ARRAY_COUNT(nextjointTable)) {
+        // SOH [Enhancement] Modern animation: sample between keyframes when playing at fractional speeds. Only
+        // limb rotations are blended; the root translation that moves the actor stays on the keyframe.
+        SkelAnime_GetFrameData(skelAnime->animation, ModernAnim_NextFrame(skelAnime, (s32)skelAnime->curFrame),
+                               skelAnime->limbCount, nextjointTable);
+        ModernAnim_ApplySubframe(skelAnime, nextjointTable);
     }
     if (skelAnime->morphWeight != 0) {
         f32 updateRate = R_UPDATE_RATE * (1.0f / 3.0f);
@@ -1636,7 +1706,9 @@ void SkelAnime_AnimateFrame(SkelAnime* skelAnime) {
             skelAnime->morphWeight = 0.0f;
         } else {
             SkelAnime_InterpFrameTable(skelAnime->limbCount, skelAnime->jointTable, skelAnime->jointTable,
-                                       skelAnime->morphTable, skelAnime->morphWeight);
+                                       skelAnime->morphTable,
+                                       ModernAnim_EasingEnabled() ? ModernAnim_MorphRemaining(skelAnime->morphWeight)
+                                                                  : skelAnime->morphWeight);
         }
     }
 }
@@ -1717,6 +1789,9 @@ void Animation_ChangeImpl(SkelAnime* skelAnime, AnimationHeader* animation, f32 
     if (ResourceMgr_OTRSigCheck(currentAnimation) != 0)
         currentAnimation = ResourceMgr_LoadAnimByName(currentAnimation);
 
+    // SOH [Enhancement] Modern animation: remember the pose on screen so an instant change can cross-fade
+    ModernAnim_BeginChange(skelAnime, animation, currentAnimation, morphFrames, false);
+
     skelAnime->mode = mode;
     if ((morphFrames != 0.0f) && ((animation != currentAnimation) || (startFrame != skelAnime->curFrame))) {
         if (morphFrames < 0) {
@@ -1753,6 +1828,8 @@ void Animation_ChangeImpl(SkelAnime* skelAnime, AnimationHeader* animation, f32 
         }
     }
     skelAnime->playSpeed = playSpeed;
+
+    ModernAnim_EndChange(skelAnime);
 }
 
 /**
@@ -1940,6 +2017,7 @@ void SkelAnime_Free(SkelAnime* skelAnime, PlayState* play) {
     }
 
     ResourceMgr_UnregisterSkeleton(skelAnime);
+    ModernAnim_Forget(skelAnime);
 }
 
 /**
