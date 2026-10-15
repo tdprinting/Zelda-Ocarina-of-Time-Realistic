@@ -5,6 +5,7 @@
 #include "soh/Enhancements/BunnyHood.h"
 #include "soh/Enhancements/FileSelectEnhancements.h"
 #include "soh/Enhancements/ModernAnimation/ModernAnimation.h"
+#include "soh/Enhancements/ModernAnimation/NpcFace.h"
 #include <soh/Enhancements/game-interactor/GameInteractor.h>
 #include <soh/OTRGlobals.h>
 #include <soh/Enhancements/cosmetics/authenticGfxPatches.h>
@@ -936,6 +937,14 @@ void SohMenu::AddMenuEnhancements() {
         .Options(CheckboxOptions()
                      .Tooltip("Cross-fades between animations speed up and slow down smoothly instead of moving at "
                               "a constant rate and stopping abruptly.")
+                     .DefaultValue(true));
+    AddWidget(path, "Expressive NPC Faces", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_MODERN_ANIM_NPC_FACES)
+        .RaceDisable(false)
+        .PreFunc(hideWithoutModernAnimation)
+        .Options(CheckboxOptions()
+                     .Tooltip("NPCs and enemies blink naturally, look at Link or their work, and show a mood that "
+                              "fits what they are doing: strain when lifting, anger, joy, worry, sleepiness.")
                      .DefaultValue(true));
     AddWidget(path, "Smooth Slow Animations", WIDGET_CVAR_CHECKBOX)
         .CVar(CVAR_MODERN_ANIM_SUBFRAME)

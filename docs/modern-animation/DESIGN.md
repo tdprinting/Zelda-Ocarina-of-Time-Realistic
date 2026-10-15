@@ -67,3 +67,23 @@ Results from `clips.json` (degrees/frame², lower is smoother):
 | NPCs and enemies | 38 | 30.3 / 91.3 / 95.5 | 19.5 / 43.7 / 94.0 |
 
 Gameplay was identical to the original in all 380 frames of the three clips, including the Stalfos fight.
+
+## Expressive NPC faces
+
+`NpcFace.cpp` gives every NPC, enemy and boss a face state each frame, read from the game without changing
+it (its own random generator, no actor writes):
+
+- **Mood from what they are doing.** About 100 animations are tagged with a mood: the rock-lifting and
+  grass-cutting Kokiri strain in beats with the motion, Mido and the punching Kokiri are angry, laughing and
+  dancing characters squint with joy, Talon sleeps, the windmill man scowls, Ruto squirms. Without a tagged
+  animation the situation decides: talking to Link (pleased), Link close with a sword out (worried), Link
+  arriving after a while (a moment of surprise), enemies facing Link (focused), taking a hit (pain).
+- **Blinks** every 2 to 5 seconds, sometimes double, slower and more often when tired or bored, and often with
+  a big eye movement.
+- **Gaze** at Link's head when he is in view or talking to them, with small saccades; idle characters glance
+  around, and busy ones keep their eyes on their work.
+
+Each mood is a lid shape (upper and lower lid, brow slant toward the nose, pupil size). The renderer's eye
+shader draws it: `G_SETFACEPARAMS` (pointer to `NpcFaceParams`, NpcFace.h) is emitted around each actor's
+draw once the renderer defines the command; until then the face states are computed but not drawn. The
+animation test logs them per frame (`faces` in manifest.json).

@@ -1,6 +1,7 @@
 // Modern animation smoothing. See ModernAnimation.h and docs/modern-animation/DESIGN.md.
 
 #include "ModernAnimation.h"
+#include "NpcFace.h"
 
 #include <algorithm>
 #include <cmath>
@@ -336,6 +337,9 @@ void ModernAnim_OnChange(SkelAnime* skel, void* newAnimation, void* curAnimation
 
 void ModernAnim_PostUpdate(SkelAnime* skel, s32 isLink) {
     sAnyUpdate = true;
+    if (!isLink) {
+        NpcFace_NoteSkeleton(skel);
+    }
     if (sStatsEnabled) {
         sUpdatedThisFrame.push_back(skel);
     }

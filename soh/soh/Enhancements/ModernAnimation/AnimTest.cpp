@@ -22,6 +22,7 @@
 #include <spdlog/spdlog.h>
 
 #include "ModernAnimation.h"
+#include "NpcFace.h"
 #include "soh/ActorDB.h"
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "soh/ShipInit.hpp"
@@ -237,6 +238,23 @@ nlohmann::json SkeletonSamples() {
     return out;
 }
 
+// Every face this frame as [actor id, mood, upper lid, lower lid, tilt, look weight]
+nlohmann::json Faces() {
+    nlohmann::json out = nlohmann::json::array();
+    auto r = [](f32 v) { return std::round(v * 100.0f) / 100.0f; };
+    for (int cat = 0; cat < ACTORCAT_MAX; cat++) {
+        for (Actor* a = gPlayState->actorCtx.actorLists[cat].head; a != nullptr; a = a->next) {
+            s32 mood;
+            const NpcFaceParams* face = NpcFace_Get(a, &mood);
+            if (face != nullptr) {
+                out.push_back({ a->id, NpcFace_MoodName(mood), r(face->upperLid), r(face->lowerLid), r(face->tilt),
+                                r(face->lookWeight) });
+            }
+        }
+    }
+    return out;
+}
+
 // Hash of the gameplay state of every actor and every collider registered this frame. With modern animation
 // only changing what is drawn, it must match the original frame for frame.
 struct WorldHash {
@@ -447,6 +465,7 @@ void OnFrame() {
           { "frame", sTest.ticks },
           { "skels", SkeletonSamples() },
           { "world", WorldState() },
+          { "faces", Faces() },
           { "playerPos", { player->actor.world.pos.x, player->actor.world.pos.y, player->actor.world.pos.z } } });
     if (sTest.ticks % clip.captureEvery == 0) {
         char file[256];
