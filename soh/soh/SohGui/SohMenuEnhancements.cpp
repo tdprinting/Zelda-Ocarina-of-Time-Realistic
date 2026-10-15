@@ -900,12 +900,12 @@ void SohMenu::AddMenuEnhancements() {
     AddWidget(path, "Modern Animation", WIDGET_CVAR_CHECKBOX)
         .CVar(CVAR_MODERN_ANIM_ENABLED)
         .RaceDisable(false)
-        .Options(CheckboxOptions()
-                     .Tooltip("Smoother, more natural movement for Link, NPCs and enemies, in the style of Twilight "
-                              "Princess and Ocarina of Time 3D. Movement and animation timing stay as in the "
-                              "original; weapon hitboxes follow the smoothed pose, as they follow the drawn pose "
-                              "in the original.")
-                     .DefaultValue(true));
+        .Options(
+            CheckboxOptions()
+                .Tooltip("Smoother, more natural movement for Link, NPCs and enemies, in the style of Twilight "
+                         "Princess and Ocarina of Time 3D. Only what is drawn changes: movement, timing, hitboxes and "
+                         "everything else in gameplay stay exactly as in the original.")
+                .DefaultValue(true));
     auto hideWithoutModernAnimation = [](WidgetInfo& info) {
         info.isHidden = !CVarGetInteger(CVAR_MODERN_ANIM_ENABLED, 1);
     };
@@ -929,20 +929,12 @@ void SohMenu::AddMenuEnhancements() {
                      .DefaultValue(MODERN_ANIM_ACTOR_BLEND_DEFAULT)
                      .Tooltip("Blends NPCs and enemies into a new animation over this many frames wherever the "
                               "original game cuts to it instantly. 0 keeps the original cuts."));
-    AddWidget(path, "Natural Joint Rotation", WIDGET_CVAR_CHECKBOX)
-        .CVar(CVAR_MODERN_ANIM_QUATERNION)
-        .RaceDisable(false)
-        .PreFunc(hideWithoutModernAnimation)
-        .Options(CheckboxOptions()
-                     .Tooltip("Blends joints along the shortest rotation (quaternions), so arms and legs no longer "
-                              "swing out on odd paths between two poses.")
-                     .DefaultValue(true));
     AddWidget(path, "Eased Transitions", WIDGET_CVAR_CHECKBOX)
         .CVar(CVAR_MODERN_ANIM_EASING)
         .RaceDisable(false)
         .PreFunc(hideWithoutModernAnimation)
         .Options(CheckboxOptions()
-                     .Tooltip("Transitions between animations speed up and slow down smoothly instead of moving at "
+                     .Tooltip("Cross-fades between animations speed up and slow down smoothly instead of moving at "
                               "a constant rate and stopping abruptly.")
                      .DefaultValue(true));
     AddWidget(path, "Smooth Slow Animations", WIDGET_CVAR_CHECKBOX)
@@ -952,14 +944,6 @@ void SohMenu::AddMenuEnhancements() {
         .Options(CheckboxOptions()
                      .Tooltip("Animations played slower than normal blend between their keyframes instead of "
                               "holding each one, which removes the stutter on slow walks and idles.")
-                     .DefaultValue(true));
-    AddWidget(path, "Smooth Head Tracking", WIDGET_CVAR_CHECKBOX)
-        .CVar(CVAR_MODERN_ANIM_HEAD_TRACKING)
-        .RaceDisable(false)
-        .PreFunc(hideWithoutModernAnimation)
-        .Options(CheckboxOptions()
-                     .Tooltip("NPCs and enemies turn their head and body to look at Link with a gentle start and "
-                              "stop instead of snapping.")
                      .DefaultValue(true));
 
     path.sidebarName = "Items";

@@ -22,6 +22,7 @@
 #include <spdlog/spdlog.h>
 
 #include "ModernAnimation.h"
+#include "soh/ActorDB.h"
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "soh/ShipInit.hpp"
 
@@ -88,6 +89,8 @@ struct AnimTest {
     // Each clip is loaded once without recording first, so every recorded variant enters the scene in the
     // same state (first visits play intro cutscenes and set flags)
     bool priming = true;
+    // Play_Init seeds the random generator from the clock; reseed before the scene's first actor initialises
+    bool reseedOnActorInit = false;
 };
 
 AnimTest sTest;
@@ -150,11 +153,14 @@ void SetTimeAndAge(const Clip& clip) {
     gSaveContext.skyboxTime = gSaveContext.dayTime = clip.dayTime;
     gSaveContext.nightFlag = (clip.dayTime < 0x4555 || clip.dayTime >= 0xC001) ? 1 : 0;
     gSaveContext.showTitleCard = false;
+    // Every variant starts with full health (an earlier variant's fight would otherwise carry over)
+    gSaveContext.health = gSaveContext.healthCapacity;
 }
 
 void StartClip(GameState* state, const Clip& clip, const Variant& variant) {
     ApplyCVars(variant.cvars);
     Rand_Seed(sTest.seed);
+    sTest.reseedOnActorInit = true;
     SetTimeAndAge(clip);
     SetSpawn(clip);
     if (state != nullptr) {
@@ -227,6 +233,132 @@ nlohmann::json SkeletonSamples() {
         nth = id == prevId ? nth + 1 : 0;
         prevId = id;
         out.push_back({ id, nth, std::round(accel * 10.0f) / 10.0f, transition });
+    }
+    return out;
+}
+
+// Hash of the gameplay state of every actor and every collider registered this frame. With modern animation
+// only changing what is drawn, it must match the original frame for frame.
+struct WorldHash {
+    u64 value = 1469598103934665603ull;
+    void Add(const void* data, size_t size) {
+        const u8* bytes = (const u8*)data;
+        for (size_t i = 0; i < size; i++) {
+            value = (value ^ bytes[i]) * 1099511628211ull;
+        }
+    }
+    template <typename T> void Add(const T& v) {
+        Add(&v, sizeof(T));
+    }
+};
+
+bool IsLiveCollider(Collider* collider) {
+    for (int cat = 0; cat < ACTORCAT_MAX; cat++) {
+        for (Actor* a = gPlayState->actorCtx.actorLists[cat].head; a != nullptr; a = a->next) {
+            uintptr_t begin = (uintptr_t)a;
+            uintptr_t end = begin + ActorDB::Instance->RetrieveEntry(a->id).entry.instanceSize;
+            if ((uintptr_t)collider >= begin && (uintptr_t)collider < end) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+void HashCollider(WorldHash& hash, Collider* collider) {
+    if (!IsLiveCollider(collider)) {
+        hash.Add(-1);
+        return;
+    }
+    hash.Add(collider->shape);
+    hash.Add(collider->atFlags);
+    hash.Add(collider->acFlags);
+    hash.Add(collider->ocFlags1);
+    switch (collider->shape) {
+        case COLSHAPE_JNTSPH: {
+            ColliderJntSph* jntSph = (ColliderJntSph*)collider;
+            for (s32 i = 0; i < jntSph->count; i++) {
+                hash.Add(jntSph->elements[i].dim.worldSphere);
+            }
+            break;
+        }
+        case COLSHAPE_CYLINDER:
+            hash.Add(((ColliderCylinder*)collider)->dim);
+            break;
+        case COLSHAPE_TRIS: {
+            ColliderTris* tris = (ColliderTris*)collider;
+            for (s32 i = 0; i < tris->count; i++) {
+                hash.Add(tris->elements[i].dim.vtx);
+            }
+            break;
+        }
+        case COLSHAPE_QUAD:
+            hash.Add(((ColliderQuad*)collider)->dim.quad);
+            break;
+    }
+}
+
+nlohmann::json WorldState() {
+    WorldHash actors, colliders;
+    s32 actorCount = 0;
+    // SOH_ANIM_TEST_DETAIL=1 also lists each actor's field hashes, to find what differs
+    static const bool detail = getenv("SOH_ANIM_TEST_DETAIL") != nullptr;
+    nlohmann::json detailRows = nlohmann::json::array();
+    for (int cat = 0; cat < ACTORCAT_MAX; cat++) {
+        for (Actor* a = gPlayState->actorCtx.actorLists[cat].head; a != nullptr; a = a->next) {
+            if (detail) {
+                WorldHash parts[5];
+                parts[0].Add(a->world.pos);
+                parts[0].Add(a->world.rot);
+                parts[1].Add(a->shape.rot);
+                parts[2].Add(a->velocity);
+                parts[2].Add(a->speedXZ);
+                parts[3].Add(a->focus.pos);
+                parts[4].Add(a->flags);
+                parts[4].Add(a->colChkInfo.health);
+                nlohmann::json row = { a->id };
+                for (auto& part : parts) {
+                    row.push_back(part.value & 0xFFFF);
+                }
+                detailRows.push_back(row);
+            }
+            actors.Add(a->id);
+            actors.Add(a->params);
+            actors.Add(a->flags);
+            actors.Add(a->world.pos);
+            actors.Add(a->world.rot);
+            actors.Add(a->shape.rot);
+            actors.Add(a->velocity);
+            actors.Add(a->speedXZ);
+            actors.Add(a->colChkInfo.health);
+            actors.Add(a->focus.pos);
+            actorCount++;
+        }
+    }
+    Player* player = GET_PLAYER(gPlayState);
+    actors.Add(player->stateFlags1);
+    actors.Add(player->stateFlags2);
+    actors.Add(player->meleeWeaponInfo);
+    actors.Add(gSaveContext.health);
+    CollisionCheckContext* col = &gPlayState->colChkCtx;
+    for (s32 i = 0; i < col->colATCount; i++) {
+        HashCollider(colliders, col->colAT[i]);
+    }
+    for (s32 i = 0; i < col->colACCount; i++) {
+        HashCollider(colliders, col->colAC[i]);
+    }
+    for (s32 i = 0; i < col->colOCCount; i++) {
+        HashCollider(colliders, col->colOC[i]);
+    }
+    char actorHex[17], colliderHex[17];
+    snprintf(actorHex, sizeof(actorHex), "%016llx", (unsigned long long)actors.value);
+    snprintf(colliderHex, sizeof(colliderHex), "%016llx", (unsigned long long)colliders.value);
+    nlohmann::json out = { { "actors", actorCount },
+                           { "actorHash", actorHex },
+                           { "colliders", col->colATCount + col->colACCount + col->colOCCount },
+                           { "colliderHash", colliderHex } };
+    if (detail) {
+        out["detail"] = detailRows;
     }
     return out;
 }
@@ -308,21 +440,13 @@ void OnFrame() {
     }
 
     // Phase::Playing: this frame's update and draw have run with input for tick `ticks`
-    ModernAnimFrameStats frameStats;
-    ModernAnim_GetFrameStats(&frameStats);
     Player* player = GET_PLAYER(gPlayState);
     sTest.stats.push_back(
         { { "clip", clip.name },
           { "variant", variant.name },
           { "frame", sTest.ticks },
-          { "playerMaxAccel", frameStats.playerMaxAccel },
-          { "actorMaxAccel", frameStats.actorMaxAccel },
-          { "playerPop", frameStats.playerPop },
-          { "actorPops", frameStats.actorPops },
-          { "skeletons", frameStats.skeletonCount },
-          { "actorWorst", ActorIdOf(frameStats.actorWorst) },
-          { "actorWorstLimb", frameStats.actorWorstLimb },
           { "skels", SkeletonSamples() },
+          { "world", WorldState() },
           { "playerPos", { player->actor.world.pos.x, player->actor.world.pos.y, player->actor.world.pos.z } } });
     if (sTest.ticks % clip.captureEvery == 0) {
         char file[256];
@@ -432,6 +556,12 @@ void RegisterAnimTest() {
     });
     GameInteractor::Instance->RegisterGameHook<GameInteractor::OnGameStateMainStart>(InjectInput);
     GameInteractor::Instance->RegisterGameHook<GameInteractor::OnGameFrameUpdate>(OnFrame);
+    GameInteractor::Instance->RegisterGameHook<GameInteractor::ShouldActorInit>([](void* actor, bool* result) {
+        if (sTest.reseedOnActorInit) {
+            sTest.reseedOnActorInit = false;
+            Rand_Seed(sTest.seed);
+        }
+    });
 }
 
 } // namespace

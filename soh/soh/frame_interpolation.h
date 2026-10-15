@@ -28,6 +28,10 @@ void FrameInterpolation_DontInterpolateChild(const void* a);
 
 void FrameInterpolation_RecordActorPosRotMatrix(void);
 
+// SOH [Enhancement] Modern animation: lets the display matrix stack mirror operations without recording them twice
+bool FrameInterpolation_PauseRecording(void);
+void FrameInterpolation_ResumeRecording(bool wasRecording);
+
 void FrameInterpolation_RecordMatrixPush(void);
 
 void FrameInterpolation_RecordMatrixPop(void);

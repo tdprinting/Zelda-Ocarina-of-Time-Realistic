@@ -23,6 +23,11 @@ MtxF gMtxFClear = {
 static MtxF* sMatrixStack;   // "Matrix_stack"
 static MtxF* sCurrentMatrix; // "Matrix_now"
 
+// SOH [Enhancement] Modern animation display stack, see Matrix_BeginDisplayStack
+static MtxF* sDisplayStack;
+static MtxF* sDisplayMatrix;
+static s32 sDualDepth;
+
 // Raised from 20 for deeper custom skeletons
 #define MATRIX_STACK_SIZE 32
 
@@ -34,15 +39,17 @@ void Matrix_SaveState(SaveStateCtx* ctx) {
 void Matrix_Init(GameState* gameState) {
     sCurrentMatrix = GAMESTATE_ALLOC_MC(gameState, MATRIX_STACK_SIZE * sizeof(MtxF));
     sMatrixStack = sCurrentMatrix;
+    sDisplayStack = GAMESTATE_ALLOC_MC(gameState, MATRIX_STACK_SIZE * sizeof(MtxF));
+    sDualDepth = 0;
 }
 
-void Matrix_Push(void) {
+static void Matrix_Push_Impl(void) {
     FrameInterpolation_RecordMatrixPush();
     Matrix_MtxFCopy(sCurrentMatrix + 1, sCurrentMatrix);
     sCurrentMatrix++;
 }
 
-void Matrix_Pop(void) {
+static void Matrix_Pop_Impl(void) {
     FrameInterpolation_RecordMatrixPop();
     sCurrentMatrix--;
     assert(sCurrentMatrix >= sMatrixStack);
@@ -52,7 +59,7 @@ void Matrix_Get(MtxF* dest) {
     Matrix_MtxFCopy(dest, sCurrentMatrix);
 }
 
-void Matrix_Put(MtxF* src) {
+static void Matrix_Put_Impl(MtxF* src) {
     FrameInterpolation_RecordMatrixPut(src);
     Matrix_MtxFCopy(sCurrentMatrix, src);
 }
@@ -61,7 +68,7 @@ MtxF* Matrix_GetCurrent(void) {
     return sCurrentMatrix;
 }
 
-void Matrix_Mult(MtxF* mf, u8 mode) {
+static void Matrix_Mult_Impl(MtxF* mf, u8 mode) {
     FrameInterpolation_RecordMatrixMult(mf, mode);
     MtxF* cmf = Matrix_GetCurrent();
 
@@ -72,7 +79,7 @@ void Matrix_Mult(MtxF* mf, u8 mode) {
     }
 }
 
-void Matrix_Translate(f32 x, f32 y, f32 z, u8 mode) {
+static void Matrix_Translate_Impl(f32 x, f32 y, f32 z, u8 mode) {
     FrameInterpolation_RecordMatrixTranslate(x, y, z, mode);
     MtxF* cmf = sCurrentMatrix;
     f32 tx;
@@ -96,7 +103,7 @@ void Matrix_Translate(f32 x, f32 y, f32 z, u8 mode) {
     }
 }
 
-void Matrix_Scale(f32 x, f32 y, f32 z, u8 mode) {
+static void Matrix_Scale_Impl(f32 x, f32 y, f32 z, u8 mode) {
     FrameInterpolation_RecordMatrixScale(x, y, z, mode);
     MtxF* cmf = sCurrentMatrix;
 
@@ -118,7 +125,7 @@ void Matrix_Scale(f32 x, f32 y, f32 z, u8 mode) {
     }
 }
 
-void Matrix_RotateX(f32 x, u8 mode) {
+static void Matrix_RotateX_Impl(f32 x, u8 mode) {
     FrameInterpolation_RecordMatrixRotate1Coord(0, x, mode);
     MtxF* cmf;
     f32 sin;
@@ -183,7 +190,7 @@ void Matrix_RotateX(f32 x, u8 mode) {
     }
 }
 
-void Matrix_RotateY(f32 y, u8 mode) {
+static void Matrix_RotateY_Impl(f32 y, u8 mode) {
     FrameInterpolation_RecordMatrixRotate1Coord(1, y, mode);
     MtxF* cmf;
     f32 sin;
@@ -248,7 +255,7 @@ void Matrix_RotateY(f32 y, u8 mode) {
     }
 }
 
-void Matrix_RotateZ(f32 z, u8 mode) {
+static void Matrix_RotateZ_Impl(f32 z, u8 mode) {
     FrameInterpolation_RecordMatrixRotate1Coord(2, z, mode);
     MtxF* cmf;
     f32 sin;
@@ -319,7 +326,7 @@ void Matrix_RotateZ(f32 z, u8 mode) {
  * `MTXMODE_APPLY`) gets transformed according to whatever the matrix was before adding the ZYX rotation.
  * Original Name: Matrix_RotateXYZ, changed to reflect rotation order.
  */
-void Matrix_RotateZYX(s16 x, s16 y, s16 z, u8 mode) {
+static void Matrix_RotateZYX_Impl(s16 x, s16 y, s16 z, u8 mode) {
     FrameInterpolation_RecordMatrixRotateZYX(x, y, z, mode);
     MtxF* cmf = sCurrentMatrix;
     f32 temp1;
@@ -410,7 +417,7 @@ void Matrix_RotateZYX(s16 x, s16 y, s16 z, u8 mode) {
  * This means a (column) vector is first rotated around X, then around Y, then around Z, then translated, then gets
  * transformed according to whatever the matrix was previously.
  */
-void Matrix_TranslateRotateZYX(Vec3f* translation, Vec3s* rotation) {
+static void Matrix_TranslateRotateZYX_Impl(Vec3f* translation, Vec3s* rotation) {
     FrameInterpolation_RecordMatrixTranslateRotateZYX(translation, rotation);
     MtxF* cmf = sCurrentMatrix;
     f32 sin = Math_SinS(rotation->z);
@@ -497,7 +504,7 @@ void Matrix_TranslateRotateZYX(Vec3f* translation, Vec3s* rotation) {
  * Set the current matrix to translate and rotate using YXZ Tait-Bryan angles.
  * This means a (column) vector is first rotated around Z, then around X, then around Y, then translated.
  */
-void Matrix_SetTranslateRotateYXZ(f32 translateX, f32 translateY, f32 translateZ, Vec3s* rot) {
+static void Matrix_SetTranslateRotateYXZ_Impl(f32 translateX, f32 translateY, f32 translateZ, Vec3s* rot) {
     MtxF* cmf = sCurrentMatrix;
     f32 temp1 = Math_SinS(rot->y);
     f32 temp2 = Math_CosS(rot->y);
@@ -557,12 +564,25 @@ void Matrix_SetTranslateRotateYXZ(f32 translateX, f32 translateY, f32 translateZ
 }
 
 Mtx* Matrix_MtxFToMtx(MtxF* src, Mtx* dest) {
+    // SOH [Enhancement] Modern animation: the current matrix goes to the GPU from the display stack
+    if (sDualDepth > 0 && src == sCurrentMatrix) {
+        src = sDisplayMatrix;
+    }
     FrameInterpolation_RecordMatrixMtxFToMtx(src, dest);
     guMtxF2L(src, dest);
     return dest;
 }
 
 Mtx* Matrix_ToMtx(Mtx* dest, char* file, s32 line) {
+    // SOH [Enhancement] Modern animation: matrices for the GPU come from the display stack
+    if (sDualDepth > 0) {
+        MtxF* savedMatrix = sCurrentMatrix;
+        sCurrentMatrix = sDisplayMatrix;
+        FrameInterpolation_RecordMatrixToMtx(dest, file, line);
+        guMtxF2L(Matrix_CheckFloats(sCurrentMatrix, file, line), dest);
+        sCurrentMatrix = savedMatrix;
+        return dest;
+    }
     FrameInterpolation_RecordMatrixToMtx(dest, file, line);
     guMtxF2L(Matrix_CheckFloats(sCurrentMatrix, file, line), dest);
     return dest;
@@ -654,7 +674,7 @@ void Matrix_Transpose(MtxF* mf) {
  * Since R is typically a rotation matrix, and the 3x3 part is changed from R * S to `mf` * S, this operation can be
  * seen as replacing the R rotation with `mf`, hence the function name.
  */
-void Matrix_ReplaceRotation(MtxF* mf) {
+static void Matrix_ReplaceRotation_Impl(MtxF* mf) {
     FrameInterpolation_RecordMatrixReplaceRotation(mf);
     MtxF* cmf = sCurrentMatrix;
     f32 acc;
@@ -807,7 +827,7 @@ void Matrix_MtxFToZYXRotS(MtxF* mf, Vec3s* rotDest, s32 flag) {
  * Rotate the matrix by `angle` radians around a unit vector `axis`.
  * NB: `axis` is assumed to be a unit vector.
  */
-void Matrix_RotateAxis(f32 angle, Vec3f* axis, u8 mode) {
+static void Matrix_RotateAxis_Impl(f32 angle, Vec3f* axis, u8 mode) {
     FrameInterpolation_RecordMatrixRotateAxis(angle, axis, mode);
     MtxF* cmf;
     f32 sin;
@@ -1058,3 +1078,160 @@ void Matrix_SetTranslateScaleMtx2(Mtx* mtx, f32 scaleX, f32 scaleY, f32 scaleZ, 
     };
     guMtxF2L(&mtxf, mtx);
 }
+
+// #region SOH [Enhancement] Modern animation: a second "display" matrix stack
+//
+// While a skeleton with a smoothed pose is drawn, every matrix operation is applied to two stacks: the normal
+// one, which keeps the original pose and is what the game reads back (hitboxes, effect and focus positions),
+// and a display stack that receives the smoothed limb rotations and is what goes to the GPU. Outside such
+// draws the display stack is unused.
+
+// Runs `call` against the display stack with frame interpolation recording paused (the normal call recorded it)
+#define MATRIX_ON_DISPLAY_STACK(call)                            \
+    do {                                                         \
+        MtxF* savedStack = sMatrixStack;                         \
+        MtxF* savedMatrix = sCurrentMatrix;                      \
+        bool wasRecording = FrameInterpolation_PauseRecording(); \
+        sMatrixStack = sDisplayStack;                            \
+        sCurrentMatrix = sDisplayMatrix;                         \
+        call;                                                    \
+        sDisplayMatrix = sCurrentMatrix;                         \
+        sMatrixStack = savedStack;                               \
+        sCurrentMatrix = savedMatrix;                            \
+        FrameInterpolation_ResumeRecording(wasRecording);        \
+    } while (0)
+
+void Matrix_BeginDisplayStack(void) {
+    if (sDualDepth++ == 0) {
+        sDisplayMatrix = sDisplayStack + (sCurrentMatrix - sMatrixStack);
+        Matrix_MtxFCopy(sDisplayMatrix, sCurrentMatrix);
+    }
+}
+
+void Matrix_EndDisplayStack(void) {
+    if (sDualDepth > 0) {
+        sDualDepth--;
+    }
+}
+
+/**
+ * Like Matrix_TranslateRotateZYX, but the display stack (when active) gets `displayRot` instead of `rotation`.
+ * Frame interpolation records the display version, since it only rebuilds what is drawn.
+ */
+void Matrix_TranslateRotateZYXDisplay(Vec3f* translation, Vec3s* rotation, Vec3s* displayRot) {
+    if (sDualDepth == 0) {
+        Matrix_TranslateRotateZYX_Impl(translation, rotation);
+        return;
+    }
+    MtxF* savedStack = sMatrixStack;
+    MtxF* savedMatrix = sCurrentMatrix;
+    sMatrixStack = sDisplayStack;
+    sCurrentMatrix = sDisplayMatrix;
+    Matrix_TranslateRotateZYX_Impl(translation, displayRot);
+    sDisplayMatrix = sCurrentMatrix;
+    sMatrixStack = savedStack;
+    sCurrentMatrix = savedMatrix;
+
+    bool wasRecording = FrameInterpolation_PauseRecording();
+    Matrix_TranslateRotateZYX_Impl(translation, rotation);
+    FrameInterpolation_ResumeRecording(wasRecording);
+}
+
+void Matrix_Push(void) {
+    Matrix_Push_Impl();
+    if (sDualDepth > 0) {
+        MATRIX_ON_DISPLAY_STACK(Matrix_Push_Impl());
+    }
+}
+
+void Matrix_Pop(void) {
+    Matrix_Pop_Impl();
+    if (sDualDepth > 0) {
+        MATRIX_ON_DISPLAY_STACK(Matrix_Pop_Impl());
+    }
+}
+
+void Matrix_Put(MtxF* src) {
+    Matrix_Put_Impl(src);
+    if (sDualDepth > 0) {
+        MATRIX_ON_DISPLAY_STACK(Matrix_Put_Impl(src));
+    }
+}
+
+void Matrix_Mult(MtxF* mf, u8 mode) {
+    Matrix_Mult_Impl(mf, mode);
+    if (sDualDepth > 0) {
+        MATRIX_ON_DISPLAY_STACK(Matrix_Mult_Impl(mf, mode));
+    }
+}
+
+void Matrix_Translate(f32 x, f32 y, f32 z, u8 mode) {
+    Matrix_Translate_Impl(x, y, z, mode);
+    if (sDualDepth > 0) {
+        MATRIX_ON_DISPLAY_STACK(Matrix_Translate_Impl(x, y, z, mode));
+    }
+}
+
+void Matrix_Scale(f32 x, f32 y, f32 z, u8 mode) {
+    Matrix_Scale_Impl(x, y, z, mode);
+    if (sDualDepth > 0) {
+        MATRIX_ON_DISPLAY_STACK(Matrix_Scale_Impl(x, y, z, mode));
+    }
+}
+
+void Matrix_RotateX(f32 x, u8 mode) {
+    Matrix_RotateX_Impl(x, mode);
+    if (sDualDepth > 0) {
+        MATRIX_ON_DISPLAY_STACK(Matrix_RotateX_Impl(x, mode));
+    }
+}
+
+void Matrix_RotateY(f32 y, u8 mode) {
+    Matrix_RotateY_Impl(y, mode);
+    if (sDualDepth > 0) {
+        MATRIX_ON_DISPLAY_STACK(Matrix_RotateY_Impl(y, mode));
+    }
+}
+
+void Matrix_RotateZ(f32 z, u8 mode) {
+    Matrix_RotateZ_Impl(z, mode);
+    if (sDualDepth > 0) {
+        MATRIX_ON_DISPLAY_STACK(Matrix_RotateZ_Impl(z, mode));
+    }
+}
+
+void Matrix_RotateZYX(s16 x, s16 y, s16 z, u8 mode) {
+    Matrix_RotateZYX_Impl(x, y, z, mode);
+    if (sDualDepth > 0) {
+        MATRIX_ON_DISPLAY_STACK(Matrix_RotateZYX_Impl(x, y, z, mode));
+    }
+}
+
+void Matrix_TranslateRotateZYX(Vec3f* translation, Vec3s* rotation) {
+    Matrix_TranslateRotateZYX_Impl(translation, rotation);
+    if (sDualDepth > 0) {
+        MATRIX_ON_DISPLAY_STACK(Matrix_TranslateRotateZYX_Impl(translation, rotation));
+    }
+}
+
+void Matrix_SetTranslateRotateYXZ(f32 translateX, f32 translateY, f32 translateZ, Vec3s* rot) {
+    Matrix_SetTranslateRotateYXZ_Impl(translateX, translateY, translateZ, rot);
+    if (sDualDepth > 0) {
+        MATRIX_ON_DISPLAY_STACK(Matrix_SetTranslateRotateYXZ_Impl(translateX, translateY, translateZ, rot));
+    }
+}
+
+void Matrix_ReplaceRotation(MtxF* mf) {
+    Matrix_ReplaceRotation_Impl(mf);
+    if (sDualDepth > 0) {
+        MATRIX_ON_DISPLAY_STACK(Matrix_ReplaceRotation_Impl(mf));
+    }
+}
+
+void Matrix_RotateAxis(f32 angle, Vec3f* axis, u8 mode) {
+    Matrix_RotateAxis_Impl(angle, axis, mode);
+    if (sDualDepth > 0) {
+        MATRIX_ON_DISPLAY_STACK(Matrix_RotateAxis_Impl(angle, axis, mode));
+    }
+}
+// #endregion
