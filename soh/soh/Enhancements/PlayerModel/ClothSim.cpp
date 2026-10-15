@@ -94,8 +94,8 @@ struct Chain {
     std::vector<float> stiffness; // per particle (index 0 is pinned)
     float maxAngle;               // radians away from the animated direction
     float damping;
-    float radius; // model units, for collisions
-    std::vector<V3> x, prev;      // world positions, bones.size() + 1 particles
+    float radius;            // model units, for collisions
+    std::vector<V3> x, prev; // world positions, bones.size() + 1 particles
 };
 
 struct Capsule {
@@ -120,8 +120,8 @@ static void Setup(const Model& model) {
     sState = State();
     sState.model = &model;
 
-    auto addChain = [&](const std::vector<int>& bones, std::vector<float> stiffness, float maxAngle,
-                        float damping, float radius) {
+    auto addChain = [&](const std::vector<int>& bones, std::vector<float> stiffness, float maxAngle, float damping,
+                        float radius) {
         for (int b : bones) {
             if (b < 0) {
                 return;
@@ -225,8 +225,8 @@ void ClothSim_Update(PlayState* play, const Model& model, const Mat4& base, Mat4
     // the pose debug options) would fling the cloth through the body, so start over from the animated pose.
     Mat4 rootWorld = world(kLimbRoot);
     const V3 facing = Norm(V3{ rootWorld.m[2][0], rootWorld.m[2][1], rootWorld.m[2][2] });
-    if (!sState.valid || (newFrame && frame != sState.lastFrame + 1) ||
-        Len(root - sState.lastRoot) > 3000.0f * scale || Dot(facing, sState.lastFacing) < 0.5f) {
+    if (!sState.valid || (newFrame && frame != sState.lastFrame + 1) || Len(root - sState.lastRoot) > 3000.0f * scale ||
+        Dot(facing, sState.lastFacing) < 0.5f) {
         sState.valid = false;
     }
 

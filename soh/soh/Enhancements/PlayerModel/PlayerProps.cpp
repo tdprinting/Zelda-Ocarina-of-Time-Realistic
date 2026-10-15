@@ -97,14 +97,22 @@ static bool LoadProp(Prop p) {
     sTexNames.reserve(64);
     Gfx g;
     auto push = [&](const Gfx& c) { mesh.dl.push_back(c); };
-    gDPPipeSync(&g); push(g);
-    gDPSetCycleType(&g, G_CYC_2CYCLE); push(g);
-    gDPSetRenderMode(&g, G_RM_FOG_SHADE_A, G_RM_AA_ZB_OPA_SURF2); push(g);
-    gDPSetCombineMode(&g, G_CC_MODULATEIDECALA, G_CC_PASS2); push(g);
-    gSPClearGeometryMode(&g, G_TEXTURE_GEN | G_TEXTURE_GEN_LINEAR | G_CULL_FRONT); push(g);
-    gSPSetGeometryMode(&g, G_ZBUFFER | G_SHADE | G_CULL_BACK | G_FOG | G_LIGHTING | G_SHADING_SMOOTH); push(g);
-    gDPSetPrimColor(&g, 0, 0, 255, 255, 255, 255); push(g);
-    gSPTexture(&g, 0xFFFF, 0xFFFF, 0, G_TX_RENDERTILE, G_ON); push(g);
+    gDPPipeSync(&g);
+    push(g);
+    gDPSetCycleType(&g, G_CYC_2CYCLE);
+    push(g);
+    gDPSetRenderMode(&g, G_RM_FOG_SHADE_A, G_RM_AA_ZB_OPA_SURF2);
+    push(g);
+    gDPSetCombineMode(&g, G_CC_MODULATEIDECALA, G_CC_PASS2);
+    push(g);
+    gSPClearGeometryMode(&g, G_TEXTURE_GEN | G_TEXTURE_GEN_LINEAR | G_CULL_FRONT);
+    push(g);
+    gSPSetGeometryMode(&g, G_ZBUFFER | G_SHADE | G_CULL_BACK | G_FOG | G_LIGHTING | G_SHADING_SMOOTH);
+    push(g);
+    gDPSetPrimColor(&g, 0, 0, 255, 255, 255, 255);
+    push(g);
+    gSPTexture(&g, 0xFFFF, 0xFFFF, 0, G_TX_RENDERTILE, G_ON);
+    push(g);
     uint32_t material = UINT32_MAX;
     for (const Chunk& c : m.chunks) {
         if (c.material != material) {
@@ -134,8 +142,10 @@ static bool LoadProp(Prop p) {
             push(g);
         }
     }
-    gDPPipeSync(&g); push(g);
-    gSPEndDisplayList(&g); push(g);
+    gDPPipeSync(&g);
+    push(g);
+    gSPEndDisplayList(&g);
+    push(g);
     return true;
 }
 
@@ -183,7 +193,8 @@ static void BuildSwaps() {
         }
         return s;
     };
-    const auto hilt = { "objects/object_link_boy/gLinkAdultSwordPommelTex", "objects/object_link_boy/gLinkAdultSwordGuardTex",
+    const auto hilt = { "objects/object_link_boy/gLinkAdultSwordPommelTex",
+                        "objects/object_link_boy/gLinkAdultSwordGuardTex",
                         "objects/object_link_boy/gLinkAdultSwordEmblemTex" };
     // In the hand lists the blade is the only geometry using the shiny highlight texture; on the back the
     // Mirror Shield uses it too, so it is only dropped from the hand.

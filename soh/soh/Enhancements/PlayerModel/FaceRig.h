@@ -17,7 +17,7 @@ namespace PlayerModel {
 // expression the animation asks for. `eyeIndex`/`mouthIndex` are the vanilla face texture
 // indices the current animation requested. Writes one weight per model morph to `morphWeights`
 // and may re-aim face bones in `pose` (actor-relative transforms).
-void FaceRig_Update(PlayState* play, Player* player, const Model& model, s32 eyeIndex, s32 mouthIndex,
-                    const Mat4& base, Mat4* pose, float* morphWeights);
+void FaceRig_Update(PlayState* play, Player* player, const Model& model, s32 eyeIndex, s32 mouthIndex, const Mat4& base,
+                    Mat4* pose, float* morphWeights);
 
 } // namespace PlayerModel

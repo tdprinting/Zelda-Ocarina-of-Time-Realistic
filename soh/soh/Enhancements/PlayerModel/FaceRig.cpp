@@ -22,15 +22,32 @@ constexpr float kDeg = kPi / 180.0f;
 
 // Blendshapes the face pass authors (tools/player-model/face.py).
 enum Shape {
-    kBlinkL, kBlinkR, kSquintL, kSquintR, kWideL, kWideR,
-    kBrowUpL, kBrowUpR, kBrowDownL, kBrowDownR, kBrowInnerUpL, kBrowInnerUpR,
-    kSmileL, kSmileR, kFrownL, kFrownR, kCheekL, kCheekR, kJawOpen, kPucker,
+    kBlinkL,
+    kBlinkR,
+    kSquintL,
+    kSquintR,
+    kWideL,
+    kWideR,
+    kBrowUpL,
+    kBrowUpR,
+    kBrowDownL,
+    kBrowDownR,
+    kBrowInnerUpL,
+    kBrowInnerUpR,
+    kSmileL,
+    kSmileR,
+    kFrownL,
+    kFrownR,
+    kCheekL,
+    kCheekR,
+    kJawOpen,
+    kPucker,
     kNumShapes,
 };
 const char* const kShapeNames[kNumShapes] = {
-    "blinkL", "blinkR", "squintL", "squintR", "wideL", "wideR",
-    "browUpL", "browUpR", "browDownL", "browDownR", "browInnerUpL", "browInnerUpR",
-    "smileL", "smileR", "frownL", "frownR", "cheekL", "cheekR", "jawOpen", "pucker",
+    "blinkL",  "blinkR",    "squintL",   "squintR",      "wideL",        "wideR",  "browUpL",
+    "browUpR", "browDownL", "browDownR", "browInnerUpL", "browInnerUpR", "smileL", "smileR",
+    "frownL",  "frownR",    "cheekL",    "cheekR",       "jawOpen",      "pucker",
 };
 
 // A facial pose, symmetric unless both sides are set separately.
@@ -61,11 +78,21 @@ Face Effort() { // sword swings: a short battle cry
     return Face().Sym(kBrowDownL, 1.0f).Sym(kSquintL, 0.6f).Set(kJawOpen, 0.55f).Sym(kCheekL, 0.3f);
 }
 Face Strain() { // climbing, lifting, pushing
-    return Face().Sym(kBrowDownL, 0.5f).Sym(kSquintL, 0.65f).Set(kJawOpen, 0.12f).Sym(kFrownL, 0.35f).Sym(kCheekL, 0.25f);
+    return Face()
+        .Sym(kBrowDownL, 0.5f)
+        .Sym(kSquintL, 0.65f)
+        .Set(kJawOpen, 0.12f)
+        .Sym(kFrownL, 0.35f)
+        .Sym(kCheekL, 0.25f);
 }
 Face Pain() {
-    return Face().Sym(kBlinkL, 0.75f).Sym(kSquintL, 1.0f).Sym(kBrowDownL, 0.5f).Sym(kBrowInnerUpL, 0.7f)
-        .Set(kJawOpen, 0.45f).Sym(kFrownL, 0.6f);
+    return Face()
+        .Sym(kBlinkL, 0.75f)
+        .Sym(kSquintL, 1.0f)
+        .Sym(kBrowDownL, 0.5f)
+        .Sym(kBrowInnerUpL, 0.7f)
+        .Set(kJawOpen, 0.45f)
+        .Sym(kFrownL, 0.6f);
 }
 Face Joy() {
     return Face().Sym(kSmileL, 1.0f).Sym(kCheekL, 0.8f).Sym(kBrowUpL, 0.8f).Sym(kWideL, 0.3f).Set(kJawOpen, 0.4f);
@@ -132,8 +159,8 @@ struct State {
     bool doubleBlink = false;
     float blink = 0.0f;
     // gaze
-    float gazeYaw = 0, gazePitch = 0;           // smoothed, radians
-    float saccadeYaw = 0, saccadePitch = 0;     // offset around the target
+    float gazeYaw = 0, gazePitch = 0;       // smoothed, radians
+    float saccadeYaw = 0, saccadePitch = 0; // offset around the target
     int saccadeTimer = 10;
     // scenario timers (frames)
     int painFrames = 0;
@@ -171,20 +198,47 @@ void Setup(const Model& model) {
 // Vanilla face textures the animation asked for, as an expression and an optional gaze.
 void VanillaFace(s32 eyeIndex, s32 mouthIndex, Face& f, float& blinkFloor, float& yaw, float& pitch, bool& hasGaze) {
     switch (eyeIndex) {
-        case 1: blinkFloor = 0.5f; break;                              // half closed
-        case 2: blinkFloor = 1.0f; break;                              // closed
-        case 3: yaw = 25 * kDeg; hasGaze = true; break;                // look left
-        case 4: yaw = -25 * kDeg; hasGaze = true; break;               // look right
-        case 5: f.AddScaled(Surprise(), 0.9f); break;                  // wide / shocked
-        case 6: pitch = -15 * kDeg; hasGaze = true; break;             // look down
-        case 7: blinkFloor = 1.0f; f.Sym(kSquintL, 0.5f); break;       // squeezed shut
-        default: break;
+        case 1:
+            blinkFloor = 0.5f;
+            break; // half closed
+        case 2:
+            blinkFloor = 1.0f;
+            break; // closed
+        case 3:
+            yaw = 25 * kDeg;
+            hasGaze = true;
+            break; // look left
+        case 4:
+            yaw = -25 * kDeg;
+            hasGaze = true;
+            break; // look right
+        case 5:
+            f.AddScaled(Surprise(), 0.9f);
+            break; // wide / shocked
+        case 6:
+            pitch = -15 * kDeg;
+            hasGaze = true;
+            break; // look down
+        case 7:
+            blinkFloor = 1.0f;
+            f.Sym(kSquintL, 0.5f);
+            break; // squeezed shut
+        default:
+            break;
     }
     switch (mouthIndex) {
-        case 1: f.w[kJawOpen] = std::max(f.w[kJawOpen], 0.3f); break;
-        case 2: f.w[kJawOpen] = std::max(f.w[kJawOpen], 0.8f); break;
-        case 3: f.Sym(kSmileL, 0.8f); f.w[kJawOpen] = std::max(f.w[kJawOpen], 0.35f); break;
-        default: break;
+        case 1:
+            f.w[kJawOpen] = std::max(f.w[kJawOpen], 0.3f);
+            break;
+        case 2:
+            f.w[kJawOpen] = std::max(f.w[kJawOpen], 0.8f);
+            break;
+        case 3:
+            f.Sym(kSmileL, 0.8f);
+            f.w[kJawOpen] = std::max(f.w[kJawOpen], 0.35f);
+            break;
+        default:
+            break;
     }
 }
 
@@ -247,8 +301,8 @@ bool ActorWorldPos(Actor* a, float out[3]) {
 
 } // namespace
 
-void FaceRig_Update(PlayState* play, Player* player, const Model& model, s32 eyeIndex, s32 mouthIndex,
-                    const Mat4& base, Mat4* pose, float* morphWeights) {
+void FaceRig_Update(PlayState* play, Player* player, const Model& model, s32 eyeIndex, s32 mouthIndex, const Mat4& base,
+                    Mat4* pose, float* morphWeights) {
     if (sState.model != &model) {
         Setup(model);
     }
@@ -291,15 +345,20 @@ void FaceRig_Update(PlayState* play, Player* player, const Model& model, s32 eye
             st.lastInvincibility = player->invincibilityTimer;
             st.lastState1 = s1;
 
-            const bool idle = player->actor.speedXZ < 0.5f && !(s1 & (PLAYER_STATE1_TALKING | PLAYER_STATE1_HOSTILE_LOCK_ON)) && !cutscene;
+            const bool idle = player->actor.speedXZ < 0.5f &&
+                              !(s1 & (PLAYER_STATE1_TALKING | PLAYER_STATE1_HOSTILE_LOCK_ON)) && !cutscene;
             st.idleFrames = idle ? st.idleFrames + 1 : 0;
             if (st.idleFrames > 20 * 20 && st.yawnFrames == 0 && st.rng.Next() < 0.004f) {
                 st.yawnFrames = 45;
             }
-            if (st.painFrames > 0) st.painFrames--;
-            if (st.effortFrames > 0) st.effortFrames--;
-            if (st.surpriseFrames > 0) st.surpriseFrames--;
-            if (st.yawnFrames > 0) st.yawnFrames--;
+            if (st.painFrames > 0)
+                st.painFrames--;
+            if (st.effortFrames > 0)
+                st.effortFrames--;
+            if (st.surpriseFrames > 0)
+                st.surpriseFrames--;
+            if (st.yawnFrames > 0)
+                st.yawnFrames--;
         }
 
         if (!cutscene) {
@@ -458,15 +517,15 @@ void FaceRig_Update(PlayState* play, Player* player, const Model& model, s32 eye
     };
     const Mat4 eyeRot = Mul(rotY(st.gazeYaw), rotX(-st.gazePitch));
     for (int side = 0; side < 2; side++) {
-        const float lidClose = std::clamp(std::max(st.current.w[kBlinkR - side] , blink), 0.0f, 1.0f);
+        const float lidClose = std::clamp(std::max(st.current.w[kBlinkR - side], blink), 0.0f, 1.0f);
         const float squint = st.current.w[kSquintR - side];
         const float wide = st.current.w[kWideR - side];
         if (st.eyeBone[side] >= 0) {
             pose[st.eyeBone[side]] = Mul(pose[st.eyeBone[side]], eyeRot);
         }
         if (st.lidBone[side] >= 0) {
-            float angle = 12.0f * kDeg                       // rest: lid just over the top of the iris
-                          + lidClose * 62.0f * kDeg          // blink
+            float angle = 12.0f * kDeg              // rest: lid just over the top of the iris
+                          + lidClose * 62.0f * kDeg // blink
                           + squint * 10.0f * kDeg - wide * 12.0f * kDeg - st.gazePitch * 0.6f;
             angle = std::clamp(angle, -6.0f * kDeg, 76.0f * kDeg);
             pose[st.lidBone[side]] = Mul(pose[st.lidBone[side]], rotX(angle));

@@ -18,8 +18,8 @@ Mat4 Mul(const Mat4& a, const Mat4& b) {
     Mat4 r;
     for (int c = 0; c < 4; c++) {
         for (int row = 0; row < 4; row++) {
-            r.m[c][row] = a.m[0][row] * b.m[c][0] + a.m[1][row] * b.m[c][1] + a.m[2][row] * b.m[c][2] +
-                          a.m[3][row] * b.m[c][3];
+            r.m[c][row] =
+                a.m[0][row] * b.m[c][0] + a.m[1][row] * b.m[c][1] + a.m[2][row] * b.m[c][2] + a.m[3][row] * b.m[c][3];
         }
     }
     return r;
@@ -315,94 +315,95 @@ void BuildChunks(Model& model, int maxVerts) {
     model.chunkTris.clear();
 
     for (uint32_t mat = 0; mat < model.materials.size(); mat++) {
-    const Material& material = model.materials[mat];
-    for (uint32_t t = material.firstTri; t < material.firstTri + material.numTris; t++) {
-        used[t] = 0;
-    }
-    size_t seed = material.firstTri;
-    const size_t seedEnd = (size_t)material.firstTri + material.numTris;
-    while (true) {
-        while (seed < seedEnd && used[seed]) {
-            seed++;
+        const Material& material = model.materials[mat];
+        for (uint32_t t = material.firstTri; t < material.firstTri + material.numTris; t++) {
+            used[t] = 0;
         }
-        if (seed >= seedEnd) {
-            break;
-        }
-        Chunk chunk{};
-        chunk.material = mat;
-        chunk.firstVert = (uint32_t)model.chunkVerts.size();
-        chunk.firstTri = (uint32_t)(model.chunkTris.size() / 3);
-        loaded.clear();
-        frontier.clear();
-        frontier.push_back((uint32_t)seed);
-
-        auto newVertsFor = [&](uint32_t t) {
-            int n = 0;
-            for (int k = 0; k < 3; k++) {
-                n += slot[model.tris[t * 3 + k]] < 0;
+        size_t seed = material.firstTri;
+        const size_t seedEnd = (size_t)material.firstTri + material.numTris;
+        while (true) {
+            while (seed < seedEnd && used[seed]) {
+                seed++;
             }
-            return n;
-        };
-
-        while (!frontier.empty()) {
-            // Take the frontier triangle that needs the fewest new vertices.
-            size_t best = frontier.size();
-            int bestNew = 4;
-            for (size_t i = 0; i < frontier.size(); i++) {
-                if (used[frontier[i]]) {
-                    continue;
-                }
-                int n = newVertsFor(frontier[i]);
-                if (n < bestNew) {
-                    bestNew = n;
-                    best = i;
-                    if (n == 0) {
-                        break;
-                    }
-                }
-            }
-            if (best == frontier.size()) {
+            if (seed >= seedEnd) {
                 break;
             }
-            const uint32_t t = frontier[best];
-            frontier[best] = frontier.back();
-            frontier.pop_back();
-            if ((int)loaded.size() + bestNew > maxVerts) {
-                continue;
-            }
-            used[t] = 1;
-            for (int k = 0; k < 3; k++) {
-                const uint32_t v = model.tris[t * 3 + k];
-                if (slot[v] < 0) {
-                    slot[v] = (int)loaded.size();
-                    loaded.push_back(v);
-                    for (uint32_t a = start[v]; a < start[v + 1]; a++) {
-                        if (!used[adj[a]]) {
-                            frontier.push_back(adj[a]);
+            Chunk chunk{};
+            chunk.material = mat;
+            chunk.firstVert = (uint32_t)model.chunkVerts.size();
+            chunk.firstTri = (uint32_t)(model.chunkTris.size() / 3);
+            loaded.clear();
+            frontier.clear();
+            frontier.push_back((uint32_t)seed);
+
+            auto newVertsFor = [&](uint32_t t) {
+                int n = 0;
+                for (int k = 0; k < 3; k++) {
+                    n += slot[model.tris[t * 3 + k]] < 0;
+                }
+                return n;
+            };
+
+            while (!frontier.empty()) {
+                // Take the frontier triangle that needs the fewest new vertices.
+                size_t best = frontier.size();
+                int bestNew = 4;
+                for (size_t i = 0; i < frontier.size(); i++) {
+                    if (used[frontier[i]]) {
+                        continue;
+                    }
+                    int n = newVertsFor(frontier[i]);
+                    if (n < bestNew) {
+                        bestNew = n;
+                        best = i;
+                        if (n == 0) {
+                            break;
                         }
                     }
                 }
-                model.chunkTris.push_back((uint8_t)slot[v]);
+                if (best == frontier.size()) {
+                    break;
+                }
+                const uint32_t t = frontier[best];
+                frontier[best] = frontier.back();
+                frontier.pop_back();
+                if ((int)loaded.size() + bestNew > maxVerts) {
+                    continue;
+                }
+                used[t] = 1;
+                for (int k = 0; k < 3; k++) {
+                    const uint32_t v = model.tris[t * 3 + k];
+                    if (slot[v] < 0) {
+                        slot[v] = (int)loaded.size();
+                        loaded.push_back(v);
+                        for (uint32_t a = start[v]; a < start[v + 1]; a++) {
+                            if (!used[adj[a]]) {
+                                frontier.push_back(adj[a]);
+                            }
+                        }
+                    }
+                    model.chunkTris.push_back((uint8_t)slot[v]);
+                }
+                chunk.numTris++;
+                // Keep the frontier bounded; stale entries are skipped above.
+                if (frontier.size() > 512) {
+                    frontier.erase(
+                        std::remove_if(frontier.begin(), frontier.end(), [&](uint32_t f) { return used[f]; }),
+                        frontier.end());
+                }
             }
-            chunk.numTris++;
-            // Keep the frontier bounded; stale entries are skipped above.
-            if (frontier.size() > 512) {
-                frontier.erase(std::remove_if(frontier.begin(), frontier.end(), [&](uint32_t f) { return used[f]; }),
-                               frontier.end());
-            }
-        }
 
-        for (uint32_t v : loaded) {
-            slot[v] = -1;
-            model.chunkVerts.push_back(v);
+            for (uint32_t v : loaded) {
+                slot[v] = -1;
+                model.chunkVerts.push_back(v);
+            }
+            chunk.numVerts = (uint32_t)loaded.size();
+            model.chunks.push_back(chunk);
         }
-        chunk.numVerts = (uint32_t)loaded.size();
-        model.chunks.push_back(chunk);
-    }
-    // Neighbours from another material were never marked usable, so they stay out of this one.
-    for (uint32_t t = material.firstTri; t < material.firstTri + material.numTris; t++) {
-        used[t] = 1;
-    }
+        // Neighbours from another material were never marked usable, so they stay out of this one.
+        for (uint32_t t = material.firstTri; t < material.firstTri + material.numTris; t++) {
+            used[t] = 1;
+        }
     }
 }
 

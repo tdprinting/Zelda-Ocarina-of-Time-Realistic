@@ -357,17 +357,15 @@ static void PlayerModel_Draw(PlayState* play, PlayerModel::DrawBuffers& buf) {
         gDPPipeSync(POLY_OPA_DISP++);
         // No wrap mask: the interpreter trims a texture to its mask period, and for an HD texture that
         // would be 32 real pixels of the atlas. Clamping trims to the nominal tile the same way.
-        gDPLoadTextureBlock(POLY_OPA_DISP++, sMaterialTextures[i].c_str(), G_IM_FMT_RGBA, G_IM_SIZ_32b,
-                            kNominalTexSize, kNominalTexSize, 0, G_TX_WRAP | G_TX_NOMIRROR, G_TX_WRAP | G_TX_NOMIRROR,
-                            G_TX_NOMASK, G_TX_NOMASK, kTexShift, kTexShift);
+        gDPLoadTextureBlock(POLY_OPA_DISP++, sMaterialTextures[i].c_str(), G_IM_FMT_RGBA, G_IM_SIZ_32b, kNominalTexSize,
+                            kNominalTexSize, 0, G_TX_WRAP | G_TX_NOMIRROR, G_TX_WRAP | G_TX_NOMIRROR, G_TX_NOMASK,
+                            G_TX_NOMASK, kTexShift, kTexShift);
         gSPDisplayList(POLY_OPA_DISP++, buf.dls[i].data());
     }
     gDPPipeSync(POLY_OPA_DISP++);
 
     CLOSE_DISPS(play->state.gfxCtx);
 }
-
-
 
 using namespace PlayerModel;
 
@@ -502,8 +500,8 @@ extern "C" void PlayerModel_End(PlayState* play) {
         static s32 sLastSurfaceFrame = -1;
         if (play->gameplayFrames != sLastSurfaceFrame) {
             sLastSurfaceFrame = play->gameplayFrames;
-            const float modelScale =
-                std::sqrt(sBase.m[0][0] * sBase.m[0][0] + sBase.m[0][1] * sBase.m[0][1] + sBase.m[0][2] * sBase.m[0][2]);
+            const float modelScale = std::sqrt(sBase.m[0][0] * sBase.m[0][0] + sBase.m[0][1] * sBase.m[0][1] +
+                                               sBase.m[0][2] * sBase.m[0][2]);
             SurfaceState_Update(play, sPlayer, modelScale);
         }
         if (CVarGetInteger(CVAR_PLAYER_MODEL_CLOTH, 1)) {

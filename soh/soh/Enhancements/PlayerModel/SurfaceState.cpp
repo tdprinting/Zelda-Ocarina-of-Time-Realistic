@@ -100,7 +100,9 @@ float ValueNoise(float x, float y, int period, int seed) {
     float fx = x - x0, fy = y - y0;
     fx = fx * fx * (3 - 2 * fx);
     fy = fy * fy * (3 - 2 * fy);
-    auto h = [&](int a, int b) { return Hash(((a % period) + period) % period, ((b % period) + period) % period, seed); };
+    auto h = [&](int a, int b) {
+        return Hash(((a % period) + period) % period, ((b % period) + period) % period, seed);
+    };
     float a = h(x0, y0) + (h(x0 + 1, y0) - h(x0, y0)) * fx;
     float b = h(x0, y0 + 1) + (h(x0 + 1, y0 + 1) - h(x0, y0 + 1)) * fx;
     return a + (b - a) * fy;
@@ -161,7 +163,8 @@ bool Load() {
         SPDLOG_ERROR("PlayerModel: {} must be an RGBA32 texture", kBaseColorPath);
         return false;
     }
-    sState.baseOrig.assign(sState.baseTex->ImageData, sState.baseTex->ImageData + (size_t)sState.texW * sState.texH * 4);
+    sState.baseOrig.assign(sState.baseTex->ImageData,
+                           sState.baseTex->ImageData + (size_t)sState.texW * sState.texH * 4);
     if (validTex(sState.rmTex, w2, h2) && w2 == sState.texW && h2 == sState.texH) {
         sState.rmOrig.assign(sState.rmTex->ImageData, sState.rmTex->ImageData + (size_t)w2 * h2 * 4);
     } else {
@@ -198,7 +201,9 @@ void Composite() {
                 return t + (b - t) * fy;
             };
             const size_t p = ((size_t)y * W + x) * 4;
-            const int cls = sState.texels[std::min((int)((y + 0.5f) * sy), N - 1) * N + std::min((int)((x + 0.5f) * sx), N - 1)].cls;
+            const int cls =
+                sState.texels[std::min((int)((y + 0.5f) * sy), N - 1) * N + std::min((int)((x + 0.5f) * sx), N - 1)]
+                    .cls;
             const float wet = bl(sState.wet);
             const float dirt = bl(sState.dirt);
             float r = sState.baseOrig[p], g = sState.baseOrig[p + 1], b = sState.baseOrig[p + 2];
@@ -274,16 +279,19 @@ void SurfaceState_Update(PlayState* play, Player* player, float modelScale) {
 
     // Dirt: rolling or lying on soft ground grinds it in; walking scuffs the boots.
     bool grass = false;
-    const float floorDirt = (player->actor.bgCheckFlags & BGCHECKFLAG_GROUND) ? FloorDirt(player->floorSfxOffset, &grass) : 0.0f;
+    const float floorDirt =
+        (player->actor.bgCheckFlags & BGCHECKFLAG_GROUND) ? FloorDirt(player->floorSfxOffset, &grass) : 0.0f;
     const void* action = (const void*)player->actionFunc;
     const bool onGround = action == (const void*)Player_Action_Roll || action == (const void*)Player_Action_8084377C ||
-                          action == (const void*)Player_Action_80843954 || action == (const void*)Player_Action_80843A38;
+                          action == (const void*)Player_Action_80843954 ||
+                          action == (const void*)Player_Action_80843A38;
     if (action != sState.lastAction && onGround) {
         sState.rollSeed++; // each roll lands in a slightly different pattern
     }
     sState.lastAction = (void*)action;
     const float bodyRate = onGround ? floorDirt * 1.6f : 0.0f;
-    const float bootRate = (player->actor.speedXZ > 1.0f) ? floorDirt * 0.05f * std::min(player->actor.speedXZ / 6.0f, 1.0f) : 0.0f;
+    const float bootRate =
+        (player->actor.speedXZ > 1.0f) ? floorDirt * 0.05f * std::min(player->actor.speedXZ / 6.0f, 1.0f) : 0.0f;
     const int ox = (sState.rollSeed * 53) % N, oy = (sState.rollSeed * 97) % N;
 
     float change = 0.0f;
