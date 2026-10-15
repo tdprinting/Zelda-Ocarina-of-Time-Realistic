@@ -111,13 +111,22 @@ replacement packs do). Suggested approach:
 4. **Frame recorder + shadows.** Record each frame's opaque draws (world-space positions are already
    available) so they can be replayed into a sun shadow map, then sample it in the lighting shader.
    This also unlocks per-pixel lighting for level geometry.
-5. **Materials.** Material map format, HD texture pack hooks for normal/roughness maps, GGX shading.
+5. **Materials (started early).** Done: mod packs map a texture to normal, roughness-metal and skin
+   maps plus an eye shader (`MATERIALS.md`), shaded with GGX and a per-pixel tangent frame. Still to
+   come: iris parallax, an environment reflection for metals, and materials on level geometry.
 6. **Water and reflections.** Tag water surfaces through the material map, planar reflections via the
    frame recorder, normal-mapped ripples, refraction and depth tint; screen-space reflections on glossy
    floors such as the Temple of Time.
 7. **Volumetrics.** Height fog and sun shafts (god rays), tied to each scene's environment lighting.
 
 Each phase lands as its own PR with a menu toggle.
+
+## Engine limits
+
+Raised for HD models, effects and textures (see the commit for exact values): vertices per load 128
+(the GBI maximum), 1024 triangles per batch, 8192 cached textures, matrix stacks 32, 512 particle
+sprites, 16/64/16 sparks/sword trails/shield particles, 128 light nodes, and a 16 MB system heap.
+Save states made before this change won't load, since they copy those structures by size.
 
 ## Assets
 

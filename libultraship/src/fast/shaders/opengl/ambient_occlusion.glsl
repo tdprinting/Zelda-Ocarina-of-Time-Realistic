@@ -39,22 +39,31 @@ vec3 viewPosition(vec2 uv) {
 }
 
 void main() {
-    if (texture(uDepth, vUv).r >= 0.99999) {
+    // This pass runs at half resolution, so its pixel centres fall on the boundaries between depth texels.
+    // Snap to a depth texel centre; otherwise rounding can make a neighbour lookup return the centre texel
+    // itself, giving a zero-length tangent and a broken normal (seen as vertical stripes on walls).
+    vec2 uv = (floor(vUv / uTexel) + 0.5) * uTexel;
+    if (texture(uDepth, uv).r >= 0.99999) {
         // Sky and cleared background
         FRAG_OUT = vec4(1.0);
         return;
     }
 
-    vec3 p = viewPosition(vUv);
+    vec3 p = viewPosition(uv);
 
     // Normal from the smaller of the two one-sided differences avoids halos at depth edges
-    vec3 px1 = viewPosition(vUv + vec2(uTexel.x, 0.0)) - p;
-    vec3 px2 = p - viewPosition(vUv - vec2(uTexel.x, 0.0));
-    vec3 py1 = viewPosition(vUv + vec2(0.0, uTexel.y)) - p;
-    vec3 py2 = p - viewPosition(vUv - vec2(0.0, uTexel.y));
+    vec3 px1 = viewPosition(uv + vec2(uTexel.x, 0.0)) - p;
+    vec3 px2 = p - viewPosition(uv - vec2(uTexel.x, 0.0));
+    vec3 py1 = viewPosition(uv + vec2(0.0, uTexel.y)) - p;
+    vec3 py2 = p - viewPosition(uv - vec2(0.0, uTexel.y));
     vec3 dx = abs(px1.z) < abs(px2.z) ? px1 : px2;
     vec3 dy = abs(py1.z) < abs(py2.z) ? py1 : py2;
-    vec3 n = normalize(cross(dx, dy));
+    vec3 c = cross(dx, dy);
+    if (dot(c, c) < 1e-20) {
+        FRAG_OUT = vec4(1.0);
+        return;
+    }
+    vec3 n = normalize(c);
     // Face the normal toward the eye whatever the framebuffer's Y orientation
     if (dot(n, p) > 0.0) {
         n = -n;
@@ -62,7 +71,9 @@ void main() {
 
     float radius = uParams.x;
     float radius2 = radius * radius;
-    float bias = uParams.z * radius;
+    // Depth precision drops with distance, so the bias grows with it; this keeps large flat or sloped
+    // surfaces (cliffs, walls seen at an angle) from shading themselves in stripes
+    float bias = uParams.z * radius + p.z * 0.004;
     // Projected radius in UV units: radius * focal / distance
     float uvRadius = radius / (p.z * uProj.x) * 0.5;
     if (uvRadius < uTexel.x * 2.0) {
@@ -78,13 +89,16 @@ void main() {
         float t = (float(i) + 0.5) / float(SAMPLES);
         float angle = angle0 + t * SPIRAL_TURNS * 6.2831853;
         vec2 offset = vec2(cos(angle), sin(angle)) * (t * uvRadius);
-        vec3 v = viewPosition(vUv + offset) - p;
+        vec3 v = viewPosition(uv + offset) - p;
         float vv = dot(v, v);
         float vn = dot(v, n);
         float falloff = max(radius2 - vv, 0.0) / radius2;
         occlusion += falloff * max(vn - bias, 0.0) / (sqrt(vv) + 0.1 * radius);
     }
-    occlusion = clamp(1.0 - occlusion * uParams.y * (2.0 / float(SAMPLES)), 0.0, 1.0);
+    // Fade out with distance: far away the depth buffer is too coarse for stable normals (it shows up as
+    // horizontal banding on distant terrain), and N64 draw distances make far AO meaningless anyway
+    float fade = 1.0 - smoothstep(radius * 20.0, radius * 40.0, p.z);
+    occlusion = clamp(1.0 - occlusion * fade * uParams.y * (2.0 / float(SAMPLES)), 0.0, 1.0);
     FRAG_OUT = vec4(vec3(occlusion), 1.0);
 }
 #endif
@@ -101,7 +115,11 @@ void main() {
         for (int x = 0; x < 4; x++) {
             vec2 offset = (vec2(float(x), float(y)) - 1.5) * uAoTexel;
             float sampleDistance = viewDistance(vUv + offset);
-            float w = 1.0 / (0.002 + abs(sampleDistance - d) / d);
+            // Tolerant depth weight: samples on the same surface (even one receding steeply, where depth
+            // changes a few percent per texel) count equally so the 4x4 pattern averages out; samples across
+            // a depth edge (tens of percent) are rejected
+            float rel = abs(sampleDistance - d) / (0.04 * d);
+            float w = 1.0 / (1.0 + rel * rel * rel * rel) + 1e-4;
             sum += texture(uAo, vUv + offset).r * w;
             weightSum += w;
         }

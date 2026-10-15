@@ -439,9 +439,7 @@ void SohMenu::AddMenuSettings() {
                               "highlights and rim light. Uses the game's own light directions and colors. "
                               "OpenGL renderer only.")
                      .DefaultValue(true));
-    auto hideWithoutModernLighting = [](WidgetInfo& info) {
-        info.isHidden = !CVarGetInteger(CVAR_MODERN_LIGHTING, 1);
-    };
+    auto hideWithoutModernLighting = [](WidgetInfo& info) { info.isHidden = !CVarGetInteger(CVAR_MODERN_LIGHTING, 1); };
     AddWidget(path, "Light Wrap: %.2f", WIDGET_CVAR_SLIDER_FLOAT)
         .CVar(CVAR_MODERN_LIGHTING_WRAP)
         .RaceDisable(false)
@@ -482,6 +480,14 @@ void SohMenu::AddMenuSettings() {
                      .Max(1.0f)
                      .DefaultValue(0.2f)
                      .Format("%.2f"));
+    AddWidget(path, "Mod Pack Materials", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_MODERN_MATERIALS)
+        .RaceDisable(false)
+        .PreFunc(hideWithoutModernLighting)
+        .Options(CheckboxOptions()
+                     .Tooltip("Uses normal, roughness-metal, skin and eye materials that mod packs provide "
+                              "for their textures.")
+                     .DefaultValue(true));
     AddWidget(path, "Ambient Occlusion", WIDGET_CVAR_CHECKBOX)
         .CVar(CVAR_MODERN_AO)
         .RaceDisable(false)

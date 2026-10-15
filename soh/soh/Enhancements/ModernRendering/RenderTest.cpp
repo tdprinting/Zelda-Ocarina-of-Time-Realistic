@@ -227,7 +227,8 @@ bool LoadTest(const char* path) {
         sTest.scenes.push_back(scene);
     }
     for (const auto& v : json["variants"]) {
-        sTest.variants.push_back({ v.value("name", std::string("variant")), v.value("cvars", nlohmann::json::object()) });
+        sTest.variants.push_back(
+            { v.value("name", std::string("variant")), v.value("cvars", nlohmann::json::object()) });
     }
     if (sTest.scenes.empty() || sTest.variants.empty()) {
         SPDLOG_ERROR("Render test: {} needs at least one scene and one variant", path);

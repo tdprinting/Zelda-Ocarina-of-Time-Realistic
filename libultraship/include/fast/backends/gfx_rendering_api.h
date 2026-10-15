@@ -18,6 +18,8 @@ struct GfxClipParameters {
 enum FilteringMode { FILTER_THREE_POINT, FILTER_LINEAR, FILTER_NONE };
 
 #define MODERN_LIGHTING_MAX_LIGHTS 7
+// First texture unit of the material maps (normal, roughness-metal, skin mask)
+#define MATERIAL_TEXTURE_UNIT 8
 
 // Lighting inputs for the modern per-pixel lighting path. Directions and positions are world space.
 struct ModernLightingState {
@@ -31,6 +33,15 @@ struct ModernLightingState {
 };
 
 // Inputs for the screen-space ambient occlusion pass that runs after the opaque geometry.
+// Texture maps and parameters of a material (see Interpreter::MaterialDef). Texture ids come from
+// CreateMaterialTexture; 0 means "use the neutral default" (flat normal, white roughness-metal, no skin).
+struct MaterialState {
+    uint32_t normalTex;
+    uint32_t roughnessMetalTex;
+    uint32_t skinTex;
+    float params[4]; // x: roughness multiplier, y: metalness multiplier, z: normal strength, w: skin strength
+};
+
 struct AmbientOcclusionParams {
     float invP00, invP11; // reciprocal x/y focal scales of the scene projection
     float depthA, depthB; // view distance d = depthB / (ndcZ + depthA)
@@ -110,6 +121,11 @@ class GfxRenderingAPI {
     virtual void SetModernLightingState(const ModernLightingState& state) {
     }
     // Darkens the currently bound framebuffer by screen-space ambient occlusion computed from its depth.
+    virtual uint32_t CreateMaterialTexture(const uint8_t* rgba32Buf, uint32_t width, uint32_t height) {
+        return 0;
+    }
+    virtual void SetMaterialState(const MaterialState& state) {
+    }
     virtual bool SupportsAmbientOcclusion() {
         return false;
     }

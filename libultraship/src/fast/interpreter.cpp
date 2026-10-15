@@ -38,6 +38,9 @@
 #include "ship/Context.h"
 #include "ship/config/ConsoleVariable.h"
 #include "fast/ModernRenderingCVars.h"
+#include "ship/resource/archive/ArchiveManager.h"
+#include <nlohmann/json.hpp>
+#include <stb_image.h>
 
 #include "libultraship/libultra/os.h"
 
@@ -70,7 +73,8 @@ std::stack<std::string> currentDir;
 #define RATIO_Y(activeFb, dims) \
     ((mFbActive ? activeFb->second.applied_height : dims.height) / (2.0f * HALF_SCREEN_HEIGHT(activeFb)))
 
-#define TEXTURE_CACHE_MAX_SIZE 1024
+// Raised from 1024 so HD texture packs don't thrash the cache
+#define TEXTURE_CACHE_MAX_SIZE 8192
 
 namespace Fast {
 
@@ -112,12 +116,16 @@ static std::string GetPathWithoutFileName(char* filePath) {
     return filePath;
 }
 
-constexpr size_t MAX_TRI_BUFFER = 256;
+// Triangles batched per draw call. Raised from 256 for HD model packs (fewer, larger draws).
+constexpr size_t MAX_TRI_BUFFER = 1024;
+// Worst case per vertex: position 4, two textures 8, fog 4, grayscale 4, seven combiner inputs 28 and
+// modern lighting 6 = 54. The old budget of 32 could overflow once several of these were active together.
+constexpr size_t MAX_FLOATS_PER_VERTEX = 64;
 
 Interpreter::Interpreter() {
     mRsp = new RSP();
     mRdp = new RDP();
-    mBufVbo = new float[MAX_TRI_BUFFER * (32 * 3)];
+    mBufVbo = new float[MAX_TRI_BUFFER * MAX_FLOATS_PER_VERTEX * 3];
 }
 
 Interpreter::~Interpreter() {
@@ -1535,7 +1543,7 @@ void Interpreter::GfxSpMatrix(uint8_t parameters, const int32_t* addr) {
             mSceneProjectionDirty = true;
         }
     } else { // G_MTX_MODELVIEW
-        if ((parameters & mtx_push) && mRsp->modelview_matrix_stack_size < 11) {
+        if ((parameters & mtx_push) && mRsp->modelview_matrix_stack_size < MAX_MATRIX_STACK_SIZE) {
             ++mRsp->modelview_matrix_stack_size;
             memcpy(mRsp->modelview_matrix_stack[mRsp->modelview_matrix_stack_size - 1],
                    mRsp->modelview_matrix_stack[mRsp->modelview_matrix_stack_size - 2], sizeof(matrix));
@@ -1636,14 +1644,14 @@ void Interpreter::RequestFrameCapture(const std::string& path) {
 
 void Interpreter::UpdateModernLightingSettings() {
     auto cvars = Ship::Context::GetRawInstance()->GetConsoleVariables();
-    const bool enabled = mRapi->SupportsModernLighting() &&
-                         cvars->GetInteger(CVAR_MODERN_LIGHTING, 1) != 0;
+    const bool enabled = mRapi->SupportsModernLighting() && cvars->GetInteger(CVAR_MODERN_LIGHTING, 1) != 0;
     const float params[4] = {
         cvars->GetFloat(CVAR_MODERN_LIGHTING_WRAP, 0.25f),
         cvars->GetFloat(CVAR_MODERN_LIGHTING_SPECULAR, 0.2f),
         cvars->GetFloat(CVAR_MODERN_LIGHTING_SHININESS, 24.0f),
         cvars->GetFloat(CVAR_MODERN_LIGHTING_RIM, 0.2f),
     };
+    mModernMaterialsEnabled = cvars->GetInteger(CVAR_MODERN_MATERIALS, 1) != 0;
     mModernAOEnabled = mRapi->SupportsAmbientOcclusion() && cvars->GetInteger(CVAR_MODERN_AO, 1) != 0;
     mModernAODebug = cvars->GetInteger(CVAR_MODERN_AO_DEBUG, 0) != 0;
     mModernAORadius = cvars->GetFloat(CVAR_MODERN_AO_RADIUS, 70.0f);
@@ -1656,6 +1664,115 @@ void Interpreter::UpdateModernLightingSettings() {
         memcpy(mModernLightingParams, params, sizeof(params));
         mModernLightingDirty = true;
     }
+}
+
+void Interpreter::LoadMaterialManifests() {
+    mMaterialManifestsLoaded = true;
+    auto archives = Ship::Context::GetRawInstance()->GetResourceManager()->GetArchiveManager();
+    auto files = archives->ListFiles("materials/*.json");
+    if (files == nullptr) {
+        return;
+    }
+    for (const auto& path : *files) {
+        auto file = archives->LoadFile(path);
+        if (file == nullptr || file->Buffer == nullptr) {
+            continue;
+        }
+        try {
+            auto json = nlohmann::json::parse(file->Buffer->begin(), file->Buffer->end());
+            for (const auto& entry : json.at("materials")) {
+                MaterialDef def;
+                def.normal = entry.value("normal", "");
+                def.roughnessMetal = entry.value("roughnessMetal", "");
+                def.skinMask = entry.value("skinMask", "");
+                def.eye = entry.value("shading", "standard") == "eye";
+                // With a roughness-metal map these scale it; without one they are the values themselves
+                const bool hasMap = !def.roughnessMetal.empty();
+                def.roughness = entry.value("roughness", hasMap ? 1.0f : 0.5f);
+                def.metalness = entry.value("metalness", hasMap ? 1.0f : 0.0f);
+                def.normalStrength = entry.value("normalStrength", 1.0f);
+                def.skin = entry.value("skin", 1.0f);
+                mMaterialDefs[entry.at("texture").get<std::string>()] = def;
+            }
+        } catch (const std::exception& e) { SPDLOG_ERROR("Material manifest {}: {}", path, e.what()); }
+    }
+    SPDLOG_INFO("Loaded {} materials from mod packs", mMaterialDefs.size());
+}
+
+uint32_t Interpreter::LoadMaterialMap(const std::string& path) {
+    if (path.empty()) {
+        return 0;
+    }
+    // Image files (PNG, TGA, JPEG) can be dropped into a mod pack as-is
+    const size_t dot = path.rfind('.');
+    if (dot != std::string::npos && path.find('/', dot) == std::string::npos) {
+        auto file = Ship::Context::GetRawInstance()->GetResourceManager()->GetArchiveManager()->LoadFile(path);
+        if (file == nullptr || file->Buffer == nullptr) {
+            SPDLOG_ERROR("Material map {} not found", path);
+            return 0;
+        }
+        int w, h, channels;
+        stbi_uc* data = stbi_load_from_memory(reinterpret_cast<const stbi_uc*>(file->Buffer->data()),
+                                              (int)file->Buffer->size(), &w, &h, &channels, 4);
+        if (data == nullptr) {
+            SPDLOG_ERROR("Material map {}: {}", path, stbi_failure_reason());
+            return 0;
+        }
+        uint32_t id = mRapi->CreateMaterialTexture(data, w, h);
+        stbi_image_free(data);
+        return id;
+    }
+    // Otherwise a texture resource; RGBA32 is the format that keeps normal and roughness data intact
+    auto tex = std::dynamic_pointer_cast<Fast::Texture>(
+        Ship::Context::GetRawInstance()->GetResourceManager()->LoadResourceProcess(path));
+    if (tex == nullptr || tex->ImageData == nullptr) {
+        SPDLOG_ERROR("Material map {} not found", path);
+        return 0;
+    }
+    uint32_t w = (uint32_t)lroundf(tex->Width * tex->HByteScale);
+    uint32_t h = (uint32_t)lroundf(tex->Height * tex->VPixelScale);
+    if (tex->Type != Fast::TextureType::RGBA32bpp || (uint64_t)w * h * 4 > tex->ImageDataSize) {
+        SPDLOG_ERROR("Material map {} must be an RGBA32 texture or an image file", path);
+        return 0;
+    }
+    return mRapi->CreateMaterialTexture(tex->ImageData, w, h);
+}
+
+const Interpreter::LoadedMaterial* Interpreter::ResolveMaterial(Fast::Texture* resource) {
+    if (resource == mMaterialLastResource) {
+        return mMaterialLastResult;
+    }
+    mMaterialLastResource = resource;
+    mMaterialLastResult = FindMaterial(resource);
+    return mMaterialLastResult;
+}
+
+const Interpreter::LoadedMaterial* Interpreter::FindMaterial(Fast::Texture* resource) {
+    if (!mMaterialManifestsLoaded) {
+        LoadMaterialManifests();
+    }
+    if (resource == nullptr || mMaterialDefs.empty() || resource->GetInitData() == nullptr) {
+        return nullptr;
+    }
+    const std::string& path = resource->GetInitData()->Path;
+    auto loaded = mLoadedMaterials.find(path);
+    if (loaded != mLoadedMaterials.end()) {
+        return loaded->second.get();
+    }
+    auto def = mMaterialDefs.find(path);
+    if (def == mMaterialDefs.end()) {
+        return nullptr;
+    }
+    auto material = std::make_unique<LoadedMaterial>();
+    material->eye = def->second.eye;
+    material->state.normalTex = LoadMaterialMap(def->second.normal);
+    material->state.roughnessMetalTex = LoadMaterialMap(def->second.roughnessMetal);
+    material->state.skinTex = LoadMaterialMap(def->second.skinMask);
+    material->state.params[0] = def->second.roughness;
+    material->state.params[1] = def->second.metalness;
+    material->state.params[2] = def->second.normalStrength;
+    material->state.params[3] = def->second.skinMask.empty() ? 0.0f : def->second.skin;
+    return (mLoadedMaterials[path] = std::move(material)).get();
 }
 
 bool Interpreter::UseModernLighting(bool isRect) const {
@@ -1725,6 +1842,11 @@ void Interpreter::UploadModernLightingIfDirty() {
     }
     memcpy(state.eyePos, mEyePos, sizeof(state.eyePos));
     memcpy(state.params, mModernLightingParams, sizeof(state.params));
+    if (mModernLightingWorldGeometry) {
+        state.params[0] = 0.0f; // wrap
+        state.params[1] = 0.0f; // specular
+        state.params[3] = 0.0f; // rim
+    }
 
     if (memcmp(&state, &mModernLightingState, sizeof(state)) != 0) {
         Flush();
@@ -1734,6 +1856,27 @@ void Interpreter::UploadModernLightingIfDirty() {
 }
 
 void Interpreter::GfxSpVertex(size_t n_vertices, size_t dest_index, const F3DVtx* vertices) {
+    // Never write past the vertex buffer (the slots after it hold rectangle scratch vertices)
+    if (dest_index >= MAX_VERTICES) {
+        return;
+    }
+    n_vertices = std::min(n_vertices, MAX_VERTICES - dest_index);
+    if (mModernLightingEnabled && (mRsp->geometry_mode & G_LIGHTING)) {
+        const float(*m)[4] = mRsp->modelview_matrix_stack[mRsp->modelview_matrix_stack_size - 1];
+        bool identity = true;
+        for (int r = 0; r < 4 && identity; r++) {
+            for (int c = 0; c < 4; c++) {
+                if (fabsf(m[r][c] - (r == c ? 1.0f : 0.0f)) > 1e-4f) {
+                    identity = false;
+                    break;
+                }
+            }
+        }
+        if (identity != mModernLightingWorldGeometry) {
+            mModernLightingWorldGeometry = identity;
+            mModernLightingDirty = true;
+        }
+    }
     for (size_t i = 0; i < n_vertices; i++, dest_index++) {
         const F3DVtx_t* v = &vertices[i].v;
         const F3DVtx_tn* vn = &vertices[i].n;
@@ -2104,6 +2247,23 @@ void Interpreter::GfxSpTri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx
     }
     if (use_modern_lighting) {
         cc_options |= SHADER_OPT_MODERN_LIGHTING;
+        // The material follows the base texture; resolve it before the texture import below
+        mCurrentMaterial =
+            mModernMaterialsEnabled
+                ? ResolveMaterial(mRdp->loaded_texture[mRdp->texture_tile[mRdp->first_tile_index].tmem_index]
+                                      .raw_tex_metadata.resource.get())
+                : nullptr;
+        if (mCurrentMaterial != nullptr) {
+            cc_options |= SHADER_OPT_MATERIAL;
+            if (mCurrentMaterial->eye) {
+                cc_options |= SHADER_OPT_MATERIAL_EYE;
+            }
+            if (mCurrentMaterial != mBoundMaterial) {
+                Flush();
+                mBoundMaterial = mCurrentMaterial;
+                mRapi->SetMaterialState(mCurrentMaterial->state);
+            }
+        }
     }
 
     if (!mShaderStack.empty()) {
@@ -5654,6 +5814,8 @@ void gfx_cc_get_features(uint64_t shader_id0, uint64_t shader_id1, struct CCFeat
     cc_features->opt_grayscale = (shader_id1 & SHADER_OPT(GRAYSCALE)) != 0;
     cc_features->opt_prim_depth = (shader_id1 & SHADER_OPT(PRIM_DEPTH)) != 0;
     cc_features->opt_modern_lighting = (shader_id1 & SHADER_OPT_MODERN_LIGHTING) != 0;
+    cc_features->opt_material = (shader_id1 & SHADER_OPT_MATERIAL) != 0;
+    cc_features->opt_material_eye = (shader_id1 & SHADER_OPT_MATERIAL_EYE) != 0;
     for (int i = 0; i < 7; i++) {
         cc_features->shade_input[i] = ((shader_id1 >> (SHADER_OPT_SHADE_INPUT_SHIFT + i)) & 1) != 0;
     }

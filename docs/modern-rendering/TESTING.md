@@ -21,7 +21,7 @@ a feature left the image unchanged.
 tools/render-test/run.sh tools/render-test/lighting-ao.json /path/to/oot.o2r build-linux
 ```
 
-Needs a Linux build, `xvfb-run`, Mesa (software OpenGL) and Python with Pillow. Output goes to
+Needs a Linux build with both `soh` and `GenerateSohOtr` built (the shaders live in `soh.o2r`; the script refuses a stale one), `xvfb-run`, Mesa (software OpenGL) and Python with Pillow. Output goes to
 `render-test-output/<spec name>/`, which is git-ignored because it contains game imagery.
 
 ## Spec format

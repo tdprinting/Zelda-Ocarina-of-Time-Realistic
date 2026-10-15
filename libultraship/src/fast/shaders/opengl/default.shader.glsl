@@ -158,6 +158,15 @@
         return min(c, vec3(1.0));
     }
 
+    vec3 modernRim(vec3 n, vec3 v) {
+        float fresnel = 1.0 - clamp(dot(n, v), 0.0, 1.0);
+        // Rim is for silhouettes: fade it out on upward-facing surfaces (floors, terrain), which are
+        // otherwise seen at grazing angles and wash out
+        fresnel *= 1.0 - clamp(n.y, 0.0, 1.0);
+        return (uLightAmbient + (uLightCount > 0 ? uLightColor[0] : vec3(0.0))) *
+               (fresnel * fresnel * fresnel * uLightParams.w);
+    }
+
     vec3 modernSpecularRim(vec3 n, vec3 v) {
         vec3 s = vec3(0.0);
         float power = max(uLightParams.z, 1.0);
@@ -169,14 +178,96 @@
             vec3 h = normalize(uLightDir[i] + v);
             s += uLightColor[i] * (pow(max(dot(n, h), 0.0), power) * norm * ndl);
         }
-        float fresnel = 1.0 - clamp(dot(n, v), 0.0, 1.0);
-        // Rim is for silhouettes: fade it out on upward-facing surfaces (floors, terrain), which are
-        // otherwise seen at grazing angles and wash out
-        fresnel *= 1.0 - clamp(n.y, 0.0, 1.0);
-        vec3 rim = (uLightAmbient + (uLightCount > 0 ? uLightColor[0] : vec3(0.0))) *
-                   (fresnel * fresnel * fresnel * uLightParams.w);
-        return s * uLightParams.y + rim;
+        return s * uLightParams.y + modernRim(n, v);
     }
+
+    @if(o_material)
+    // Material maps from a mod pack (see docs/modern-rendering/MATERIALS.md), sampled with TEXEL0's UVs
+    uniform sampler2D uMatNormal;         // tangent-space normal, OpenGL convention (+Y up)
+    uniform sampler2D uMatRoughnessMetal; // glTF layout: G roughness, B metalness
+    uniform sampler2D uMatSkin;           // R: skin mask
+    uniform vec4 uMatParams;              // x: roughness scale, y: metalness scale, z: normal strength, w: skin
+
+    // Tangent frame from screen-space derivatives (Schüler's cotangent frame), so meshes need no tangents
+    vec3 perturbNormal(vec3 n, @{highp} vec3 p, vec2 uv, vec3 tn) {
+        @{highp} vec3 dp1 = dFdx(p);
+        @{highp} vec3 dp2 = dFdy(p);
+        vec2 duv1 = dFdx(uv);
+        vec2 duv2 = dFdy(uv);
+        vec3 dp2perp = cross(dp2, n);
+        vec3 dp1perp = cross(n, dp1);
+        vec3 t = dp2perp * duv1.x + dp1perp * duv2.x;
+        vec3 b = dp2perp * duv1.y + dp1perp * duv2.y;
+        float len2 = max(dot(t, t), dot(b, b));
+        if (len2 < 1e-20) {
+            return n;
+        }
+        float invmax = inversesqrt(len2);
+        // Texture V runs down the image while the map's +Y points up it
+        return normalize(mat3(t * invmax, -b * invmax, n) * tn);
+    }
+
+    float ggxSpecular(float ndh, float ndl, float ndv, float roughness) {
+        float a = roughness * roughness;
+        float a2 = a * a;
+        float d = ndh * ndh * (a2 - 1.0) + 1.0;
+        float k = a * 0.5;
+        float vis = 1.0 / ((ndl * (1.0 - k) + k) * (ndv * (1.0 - k) + k));
+        // D * Vis / 4, times pi because the game's lights are scaled for a diffuse of color * N.L
+        return a2 / (d * d) * vis * 0.25;
+    }
+
+    vec3 materialDiffuse(vec3 n, float skin) {
+        vec3 c = uLightAmbient;
+        for (int i = 0; i < @{MODERN_LIGHTING_MAX_LIGHTS}; i++) {
+            if (i >= uLightCount) break;
+            float ndl = dot(n, uLightDir[i]);
+            float lit = clamp(ndl, 0.0, 1.0);
+            // Skin: light wraps past the terminator with a warm tint, a cheap stand-in for subsurface scattering
+            float wrapped = clamp((ndl + 0.5) / 1.5, 0.0, 1.0);
+            vec3 skinLit = vec3(wrapped) + vec3(0.25, 0.04, 0.02) * (wrapped - lit);
+            c += uLightColor[i] * mix(vec3(lit), skinLit, skin);
+        }
+        return min(c, vec3(1.0));
+    }
+
+    vec3 materialSpecular(vec3 n, vec3 v, vec3 base, float roughness, float metal) {
+        vec3 f0 = mix(vec3(0.04), base, metal);
+        float ndv = max(dot(n, v), 1e-3);
+        vec3 s = vec3(0.0);
+        for (int i = 0; i < @{MODERN_LIGHTING_MAX_LIGHTS}; i++) {
+            if (i >= uLightCount) break;
+            float ndl = max(dot(n, uLightDir[i]), 0.0);
+            vec3 h = normalize(uLightDir[i] + v);
+            float vdh = max(dot(v, h), 0.0);
+            vec3 f = f0 + (1.0 - f0) * pow(1.0 - vdh, 5.0);
+            s += uLightColor[i] * f * (ggxSpecular(max(dot(n, h), 0.0), ndl, ndv, roughness) * ndl);
+        }
+        // Ambient reflection so metals aren't black away from the light
+        vec3 fAmb = f0 + (max(vec3(1.0 - roughness), f0) - f0) * pow(1.0 - ndv, 5.0);
+        return s + uLightAmbient * fAmb * (1.0 - roughness * 0.7);
+    }
+    @end
+
+    @if(o_material_eye)
+    // Eyes: a wet cornea (clearcoat-like, very smooth) over the iris and sclera, plus a soft catchlight
+    // from the camera side so they stay alive even in shadow
+    vec3 eyeCornea(vec3 n, vec3 v) {
+        vec3 s = vec3(0.0);
+        float ndv = max(dot(n, v), 1e-3);
+        for (int i = 0; i < @{MODERN_LIGHTING_MAX_LIGHTS}; i++) {
+            if (i >= uLightCount) break;
+            float ndl = max(dot(n, uLightDir[i]), 0.0);
+            vec3 h = normalize(uLightDir[i] + v);
+            float f = 0.02 + 0.98 * pow(1.0 - max(dot(v, h), 0.0), 5.0);
+            s += uLightColor[i] * (f * ggxSpecular(max(dot(n, h), 0.0), ndl, ndv, 0.08) * ndl);
+        }
+        vec3 catchDir = normalize(v + vec3(0.0, 0.35, 0.0));
+        vec3 hc = normalize(catchDir + v);
+        float catchlight = pow(max(dot(n, hc), 0.0), 600.0) * 0.6;
+        return s + vec3(catchlight) * (uLightAmbient + 0.3);
+    }
+    @end
     @end
 
     @if(o_prim_depth)
@@ -227,7 +318,20 @@
             vec3 mlNormal = normalize(vNormal);
             @{highp} vec3 mlToEye = uEyePos - vWorldPos;
             vec3 mlView = normalize(mlToEye);
-            vec3 mlDiffuse = modernDiffuse(mlNormal);
+            @if(o_material)
+                vec3 mlGeomNormal = mlNormal;
+                vec3 matTangentNormal = @{texture}(uMatNormal, vTexCoord0).xyz * 2.0 - 1.0;
+                matTangentNormal.xy *= uMatParams.z;
+                mlNormal = perturbNormal(mlNormal, vWorldPos, vTexCoord0, normalize(matTangentNormal));
+                vec4 matRM = @{texture}(uMatRoughnessMetal, vTexCoord0);
+                float matRoughness = clamp(matRM.g * uMatParams.x, 0.04, 1.0);
+                float matMetal = clamp(matRM.b * uMatParams.y, 0.0, 1.0);
+                float matSkin = @{texture}(uMatSkin, vTexCoord0).r * uMatParams.w;
+                // Metals have no diffuse; their color comes from the specular below
+                vec3 mlDiffuse = materialDiffuse(mlNormal, matSkin) * (1.0 - matMetal);
+            @else
+                vec3 mlDiffuse = modernDiffuse(mlNormal);
+            @end
             @for(i in 0..o_inputs)
                 @if(o_shade_input[i])
                     @if(o_alpha)
@@ -328,10 +432,22 @@
         texel = clamp(texel, 0.0, 1.0);
 
         @if(o_modern_lighting && o_uses_shade)
-            @if(o_alpha)
-                texel.rgb = clamp(texel.rgb + modernSpecularRim(mlNormal, mlView) * texel.a, 0.0, 1.0);
+            @if(o_material)
+                // Base color for the specular tint: the texel with lighting divided back out
+                vec3 matBase = texVal0.rgb;
+                vec3 mlSpec = materialSpecular(mlNormal, mlView, matBase, matRoughness, matMetal);
+                @if(o_material_eye)
+                    mlSpec += eyeCornea(mlGeomNormal, mlView);
+                @else
+                    mlSpec += modernRim(mlNormal, mlView);
+                @end
             @else
-                texel = clamp(texel + modernSpecularRim(mlNormal, mlView), 0.0, 1.0);
+                vec3 mlSpec = modernSpecularRim(mlNormal, mlView);
+            @end
+            @if(o_alpha)
+                texel.rgb = clamp(texel.rgb + mlSpec * texel.a, 0.0, 1.0);
+            @else
+                texel = clamp(texel + mlSpec, 0.0, 1.0);
             @end
         @end
         // TODO discard if alpha is 0?

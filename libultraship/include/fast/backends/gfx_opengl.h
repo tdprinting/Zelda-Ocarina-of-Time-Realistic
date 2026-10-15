@@ -47,6 +47,8 @@ struct ShaderProgram {
     GLint lightColorLocation;
     GLint eyePosLocation;
     GLint lightParamsLocation;
+    bool material;
+    GLint materialParamsLocation;
 };
 
 struct FramebufferOGL {
@@ -116,6 +118,8 @@ class GfxRenderingAPIOGL final : public GfxRenderingAPI {
     ImTextureID GetTextureById(int id) override;
     bool SupportsModernLighting() override;
     void SetModernLightingState(const ModernLightingState& state) override;
+    uint32_t CreateMaterialTexture(const uint8_t* rgba32Buf, uint32_t width, uint32_t height) override;
+    void SetMaterialState(const MaterialState& state) override;
     bool ReadFramebufferRGBA8(int fbId, uint32_t& width, uint32_t& height, std::vector<uint8_t>& out) override;
     bool SupportsAmbientOcclusion() override;
     void ApplyAmbientOcclusion(const AmbientOcclusionParams& params) override;
@@ -135,6 +139,9 @@ class GfxRenderingAPIOGL final : public GfxRenderingAPI {
 
     std::map<std::pair<uint64_t, uint64_t>, ShaderProgram> mShaderProgramPool;
     ModernLightingState mModernLightingState = {};
+    MaterialState mMaterialState = {};
+    // Neutral stand-ins for maps a material doesn't provide: flat normal, white roughness-metal, no skin
+    GLuint mMaterialDefaultTex[3] = {};
     // Starts at 1 so freshly created programs (serial 0) always receive the current state
     uint32_t mModernLightingSerial = 1;
 

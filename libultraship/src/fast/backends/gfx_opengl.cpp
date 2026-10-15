@@ -65,8 +65,7 @@ void GfxRenderingAPIOGL::SetUniforms(ShaderProgram* prg) const {
 void GfxRenderingAPIOGL::SetPerDrawUniforms() {
     glUniform1f(mCurrentShaderProgram->prim_depth_location, mCurrentPrimDepth);
 
-    if (mCurrentShaderProgram->modernLighting &&
-        mCurrentShaderProgram->modernLightingSerial != mModernLightingSerial) {
+    if (mCurrentShaderProgram->modernLighting && mCurrentShaderProgram->modernLightingSerial != mModernLightingSerial) {
         const ModernLightingState& s = mModernLightingState;
         glUniform3fv(mCurrentShaderProgram->lightAmbientLocation, 1, s.ambient);
         glUniform1i(mCurrentShaderProgram->lightCountLocation, s.numLights);
@@ -75,6 +74,19 @@ void GfxRenderingAPIOGL::SetPerDrawUniforms() {
         glUniform3fv(mCurrentShaderProgram->eyePosLocation, 1, s.eyePos);
         glUniform4fv(mCurrentShaderProgram->lightParamsLocation, 1, s.params);
         mCurrentShaderProgram->modernLightingSerial = mModernLightingSerial;
+    }
+
+    if (mCurrentShaderProgram->material) {
+        // Material maps live on units after the combiner (0-5) and ambient occlusion (6-7) units
+        const GLuint ids[3] = { mMaterialState.normalTex, mMaterialState.roughnessMetalTex, mMaterialState.skinTex };
+        for (int k = 0; k < 3; k++) {
+            glActiveTexture(GL_TEXTURE0 + MATERIAL_TEXTURE_UNIT + k);
+            glBindTexture(GL_TEXTURE_2D, ids[k] != 0 ? ids[k] : mMaterialDefaultTex[k]);
+        }
+        if (mLastActiveTexture >= 0) {
+            glActiveTexture(GL_TEXTURE0 + mLastActiveTexture);
+        }
+        glUniform4fv(mCurrentShaderProgram->materialParamsLocation, 1, mMaterialState.params);
     }
 
     if (mCurrentShaderProgram->usedTextures[0] || mCurrentShaderProgram->usedTextures[1]) {
@@ -264,6 +276,8 @@ std::string GfxRenderingAPIOGL::BuildFsShader(const CCFeatures& cc_features) {
         { "o_grayscale", cc_features.opt_grayscale },
         { "o_prim_depth", cc_features.opt_prim_depth },
         { "o_modern_lighting", cc_features.opt_modern_lighting },
+        { "o_material", cc_features.opt_modern_lighting && cc_features.opt_material && cc_features.usedTextures[0] },
+        { "o_material_eye", cc_features.opt_material_eye },
         { "o_shade_input", M_ARRAY(cc_features.shade_input, bool, 7) },
         { "o_uses_shade", std::any_of(std::begin(cc_features.shade_input), std::end(cc_features.shade_input),
                                       [](bool b) { return b; }) },
@@ -550,9 +564,16 @@ ShaderProgram* GfxRenderingAPIOGL::CreateAndLoadNewShader(uint64_t shader_id0, u
     prg->lightColorLocation = glGetUniformLocation(shader_program, "uLightColor");
     prg->eyePosLocation = glGetUniformLocation(shader_program, "uEyePos");
     prg->lightParamsLocation = glGetUniformLocation(shader_program, "uLightParams");
+    prg->material = cc_features.opt_modern_lighting && cc_features.opt_material && cc_features.usedTextures[0];
+    prg->materialParamsLocation = glGetUniformLocation(shader_program, "uMatParams");
 
     LoadShader(prg);
 
+    if (prg->material) {
+        glUniform1i(glGetUniformLocation(shader_program, "uMatNormal"), MATERIAL_TEXTURE_UNIT + 0);
+        glUniform1i(glGetUniformLocation(shader_program, "uMatRoughnessMetal"), MATERIAL_TEXTURE_UNIT + 1);
+        glUniform1i(glGetUniformLocation(shader_program, "uMatSkin"), MATERIAL_TEXTURE_UNIT + 2);
+    }
     if (cc_features.usedTextures[0]) {
         GLint sampler_location = glGetUniformLocation(shader_program, "uTex0");
         glUniform1i(sampler_location, 0);
@@ -1157,6 +1178,45 @@ bool GfxRenderingAPIOGL::SupportsModernLighting() {
     return true;
 }
 
+static GLuint CreateMaterialTextureObject(const uint8_t* rgba, uint32_t width, uint32_t height, bool mipmaps) {
+    GLuint id;
+    glGenTextures(1, &id);
+    glActiveTexture(GL_TEXTURE0 + MATERIAL_TEXTURE_UNIT);
+    glBindTexture(GL_TEXTURE_2D, id);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+    if (mipmaps) {
+        glGenerateMipmap(GL_TEXTURE_2D);
+    }
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, mipmaps ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    return id;
+}
+
+uint32_t GfxRenderingAPIOGL::CreateMaterialTexture(const uint8_t* rgba32Buf, uint32_t width, uint32_t height) {
+    GLuint id = CreateMaterialTextureObject(rgba32Buf, width, height, true);
+    if (mLastActiveTexture >= 0) {
+        glActiveTexture(GL_TEXTURE0 + mLastActiveTexture);
+    }
+    return id;
+}
+
+void GfxRenderingAPIOGL::SetMaterialState(const MaterialState& state) {
+    if (mMaterialDefaultTex[0] == 0) {
+        const uint8_t flatNormal[4] = { 128, 128, 255, 255 };
+        const uint8_t white[4] = { 255, 255, 255, 255 };
+        const uint8_t black[4] = { 0, 0, 0, 255 };
+        mMaterialDefaultTex[0] = CreateMaterialTextureObject(flatNormal, 1, 1, false);
+        mMaterialDefaultTex[1] = CreateMaterialTextureObject(white, 1, 1, false);
+        mMaterialDefaultTex[2] = CreateMaterialTextureObject(black, 1, 1, false);
+        if (mLastActiveTexture >= 0) {
+            glActiveTexture(GL_TEXTURE0 + mLastActiveTexture);
+        }
+    }
+    mMaterialState = state;
+}
+
 void GfxRenderingAPIOGL::SetModernLightingState(const ModernLightingState& state) {
     mModernLightingState = state;
     mModernLightingSerial++;
@@ -1171,8 +1231,9 @@ bool GfxRenderingAPIOGL::CreateAmbientOcclusionPrograms() {
     init->Type = (uint32_t)Ship::ResourceType::Shader;
     init->ByteOrder = Ship::Endianness::Native;
     init->Format = RESOURCE_FORMAT_BINARY;
-    auto res = std::static_pointer_cast<Ship::Shader>(Ship::Context::GetRawInstance()->GetResourceManager()->LoadResource(
-        "shaders/opengl/ambient_occlusion.glsl", true, init));
+    auto res =
+        std::static_pointer_cast<Ship::Shader>(Ship::Context::GetRawInstance()->GetResourceManager()->LoadResource(
+            "shaders/opengl/ambient_occlusion.glsl", true, init));
     if (res == nullptr) {
         SPDLOG_ERROR("Ambient occlusion shader missing from the archives; disabling the effect");
         return false;
@@ -1351,8 +1412,7 @@ void GfxRenderingAPIOGL::ApplyAmbientOcclusion(const AmbientOcclusionParams& par
     }
 }
 
-bool GfxRenderingAPIOGL::ReadFramebufferRGBA8(int fbId, uint32_t& width, uint32_t& height,
-                                              std::vector<uint8_t>& out) {
+bool GfxRenderingAPIOGL::ReadFramebufferRGBA8(int fbId, uint32_t& width, uint32_t& height, std::vector<uint8_t>& out) {
     if (fbId < 0 || (size_t)fbId >= mFrameBuffers.size()) {
         return false;
     }

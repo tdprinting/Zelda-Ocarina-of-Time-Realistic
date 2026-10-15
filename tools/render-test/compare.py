@@ -3,9 +3,12 @@
 
 Usage: compare.py <output-dir> [baseline-variant]
 
-For every scene it writes <scene>.png: the variants side by side, with a second row showing each variant's
-difference from the baseline (amplified 4x). summary.json records the numbers, and the script exits non-zero
-when a capture is missing or blank, or a non-baseline variant is identical to the baseline.
+For every scene it writes <scene>__sheet.png: the variants side by side, with a second row showing each
+variant's difference from the baseline (amplified 4x; these are analysis images, not renders). It also
+writes <scene>.png, a clean full-size before/after of the baseline next to the final variant (the one named
+"all", or the last one listed). summary.json records the numbers, and the script exits non-zero
+when a capture is missing or blank, a non-baseline variant is identical to the baseline, or a "-neutral"
+variant (a feature with its artistic terms zeroed) does not reproduce the baseline.
 """
 import json
 import sys
@@ -62,7 +65,11 @@ def main():
             changed = sum(gray.histogram()[9:]) / (gray.width * gray.height)
             mean = sum(ImageStat.Stat(diff).mean) / 3
             stats[name] = {"meanAbsDiff": round(mean, 3), "pixelsChanged": round(changed, 4)}
-            if name != baseline and changed == 0:
+            if name.endswith("-neutral"):
+                # Correctness check: the feature with every artistic term at zero must reproduce the original
+                if mean > 3.0:
+                    failures.append(f"{scene}/{name}: differs from {baseline} by {mean:.2f} (expected a match)")
+            elif name != baseline and changed == 0:
                 failures.append(f"{scene}/{name}: identical to {baseline} (feature had no effect)")
             top.append(labelled(image.resize(size), name))
             amplified = diff.point(lambda v: min(255, v * 4)).resize(size)
@@ -74,7 +81,13 @@ def main():
         for i, (a, b) in enumerate(zip(top, bottom)):
             sheet.paste(a, (i * cell_w, 0))
             sheet.paste(b, (i * cell_w, cell_h))
-        sheet.save(out_dir / f"{scene}.png")
+        sheet.save(out_dir / f"{scene}__sheet.png")
+
+        final = "all" if "all" in images else list(images)[-1]
+        pair = Image.new("RGB", (base.width * 2, base.height + LABEL_HEIGHT), (24, 24, 24))
+        pair.paste(labelled(base, f"{baseline} (original)"), (0, 0))
+        pair.paste(labelled(images[final], f"{final} (modern rendering)"), (base.width, 0))
+        pair.save(out_dir / f"{scene}.png")
         summary[scene] = stats
 
     (out_dir / "summary.json").write_text(json.dumps({"scenes": summary, "failures": failures}, indent=2))

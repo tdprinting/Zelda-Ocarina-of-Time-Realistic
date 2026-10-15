@@ -8,7 +8,7 @@
 #include "soh/OTRGlobals.h"
 #include "soh/Enhancements/savestate_serialize.h"
 
-#define LIGHTS_BUFFER_SIZE 32
+#define LIGHTS_BUFFER_SIZE 128 // Raised from 32 for light-heavy scenes and mods
 //#define LIGHTS_BUFFER_SIZE 1024 // Kill me
 
 typedef struct {

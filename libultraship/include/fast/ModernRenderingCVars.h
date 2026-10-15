@@ -30,3 +30,6 @@
 #ifndef CVAR_MODERN_AO_DEBUG
 #define CVAR_MODERN_AO_DEBUG "gSettings.ModernRendering.AmbientOcclusionDebug"
 #endif
+#ifndef CVAR_MODERN_MATERIALS
+#define CVAR_MODERN_MATERIALS "gSettings.ModernRendering.Materials"
+#endif

@@ -39,7 +39,7 @@
 #endif
 
 #define AUDIO_HEAP_SIZE  0x380000
-#define SYSTEM_HEAP_SIZE (1024 * 1024 * 4)
+#define SYSTEM_HEAP_SIZE (1024 * 1024 * 16)
 
 #ifdef __cplusplus
 namespace LUS
