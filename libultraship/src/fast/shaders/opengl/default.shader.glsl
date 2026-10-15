@@ -186,7 +186,9 @@
     uniform sampler2D uMatNormal;         // tangent-space normal, OpenGL convention (+Y up)
     uniform sampler2D uMatRoughnessMetal; // glTF layout: G roughness, B metalness
     uniform sampler2D uMatSkin;           // R: skin mask
-    uniform vec4 uMatParams;              // x: roughness scale, y: metalness scale, z: normal strength, w: skin
+    uniform vec4 uMatParams;              // x: roughness scale, y: metalness scale, z: normal strength,
+                                          // w: skin (eyes: >0 eye mask in uMatSkin.r, 0 whole texture, <0 auto mask)
+    uniform vec2 uMatMirror;              // 1 where the base texture mirrors along S, T
 
     // Tangent frame from screen-space derivatives (Schüler's cotangent frame), so meshes need no tangents
     vec3 perturbNormal(vec3 n, @{highp} vec3 p, vec2 uv, vec3 tn) {
@@ -243,9 +245,14 @@
             vec3 f = f0 + (1.0 - f0) * pow(1.0 - vdh, 5.0);
             s += uLightColor[i] * f * (ggxSpecular(max(dot(n, h), 0.0), ndl, ndv, roughness) * ndl);
         }
-        // Ambient reflection so metals aren't black away from the light
+        // Environment reflection from a sky/ground hemisphere built from the scene's lights, so metals
+        // reflect something instead of going black away from the highlight. Rough surfaces see its average.
+        vec3 r = reflect(-v, n);
+        vec3 sky = uLightAmbient + (uLightCount > 0 ? uLightColor[0] : vec3(0.0)) * 0.6;
+        vec3 ground = uLightAmbient * 0.6;
+        vec3 env = mix(mix(ground, sky, smoothstep(-0.4, 0.4, r.y)), 0.5 * (sky + ground), roughness);
         vec3 fAmb = f0 + (max(vec3(1.0 - roughness), f0) - f0) * pow(1.0 - ndv, 5.0);
-        return s + uLightAmbient * fAmb * (1.0 - roughness * 0.7);
+        return s + env * fAmb;
     }
     @end
 
@@ -264,7 +271,7 @@
         }
         vec3 catchDir = normalize(v + vec3(0.0, 0.35, 0.0));
         vec3 hc = normalize(catchDir + v);
-        float catchlight = pow(max(dot(n, hc), 0.0), 600.0) * 0.6;
+        float catchlight = pow(max(dot(n, hc), 0.0), 120.0);
         return s + vec3(catchlight) * (uLightAmbient + 0.3);
     }
     @end
@@ -326,9 +333,14 @@
                 vec4 matRM = @{texture}(uMatRoughnessMetal, vTexCoord0);
                 float matRoughness = clamp(matRM.g * uMatParams.x, 0.04, 1.0);
                 float matMetal = clamp(matRM.b * uMatParams.y, 0.0, 1.0);
-                float matSkin = @{texture}(uMatSkin, vTexCoord0).r * uMatParams.w;
-                // Metals have no diffuse; their color comes from the specular below
-                vec3 mlDiffuse = materialDiffuse(mlNormal, matSkin) * (1.0 - matMetal);
+                @if(o_material_eye)
+                    // Eyes keep the regular diffuse so a painted eye matches the face around it
+                    vec3 mlDiffuse = modernDiffuse(mlNormal);
+                @else
+                    float matSkin = @{texture}(uMatSkin, vTexCoord0).r * uMatParams.w;
+                    // Metals have no diffuse; their color comes from the specular below
+                    vec3 mlDiffuse = materialDiffuse(mlNormal, matSkin) * (1.0 - matMetal);
+                @end
             @else
                 vec3 mlDiffuse = modernDiffuse(mlNormal);
             @end
@@ -437,7 +449,25 @@
                 vec3 matBase = texVal0.rgb;
                 vec3 mlSpec = materialSpecular(mlNormal, mlView, matBase, matRoughness, matMetal);
                 @if(o_material_eye)
-                    mlSpec += eyeCornea(mlGeomNormal, mlView);
+                    if (uMatParams.w < 0.0) {
+                        // Vanilla eyes ("eyeMask": "auto") are painted on flat faces, with skin and brows around
+                        // them. Keep the face's own lighting and add a cornea over the eye only, rounded from
+                        // the offsets the renderer stored in the mask (G, B) so the highlight and catchlight
+                        // sit on the eye as on a real eyeball.
+                        vec4 eyeMap = @{texture}(uMatSkin, vTexCoord0);
+                        vec2 eyeOffset = eyeMap.gb * 2.0 - 1.0;
+                        // On the mirrored copies of the texture its texels run against the UVs
+                        vec2 eyeFlip = mix(vec2(1.0), 1.0 - 2.0 * mod(floor(vTexCoord0), 2.0), uMatMirror);
+                        eyeOffset *= eyeFlip;
+                        vec3 eyeNormal = perturbNormal(mlGeomNormal, vWorldPos, vTexCoord0,
+                                                       normalize(vec3(eyeOffset.x * 1.6, -eyeOffset.y * 1.6, 1.0)));
+                        mlSpec = modernSpecularRim(mlGeomNormal, mlView) + eyeCornea(eyeNormal, mlView) * eyeMap.r;
+                    } else {
+                        // A mask map (skinMask) or the whole texture
+                        float eyeMask = uMatParams.w > 0.0 ? @{texture}(uMatSkin, vTexCoord0).r : 1.0;
+                        mlSpec = mix(modernSpecularRim(mlGeomNormal, mlView), mlSpec + eyeCornea(mlGeomNormal, mlView),
+                                     eyeMask);
+                    }
                 @else
                     mlSpec += modernRim(mlNormal, mlView);
                 @end

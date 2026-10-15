@@ -1,0 +1,971 @@
+{
+ "version": 1,
+ "comment": "Built-in: vanilla character eye textures get eye shading (wet cornea highlight and catchlight). The eye area is found automatically: texels that differ from the texture's border (the surrounding skin).",
+ "materials": [
+  {
+   "texture": "objects/object_ane/gCuccoLadyEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_ane/gCuccoLadyEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_ani/gRoofManEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_ani/gRoofManEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_aob/gDogLadyEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_aob/gDogLadyEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_bg/gChuGirlEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_bg/gChuGirlEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_bw/gTorchSlugEyeTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_crow/gGuayEyeTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_cs/gGraveyardKidEyesHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_cs/gGraveyardKidEyesOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_dekunuts/gDekuNutsEyeTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_dnk/gDntStageEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_dnk/gDntStageEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_dns/gDntJijiEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_dns/gDntJijiEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_dog/gDogFaceEyeTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_ds/gPotionShopLadyEyeTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_ds2/gPotionShopkeeperEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_ds2/gPotionShopkeeperEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_du/gDaruniaEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_dy_obj/gGreatFairyEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_dy_obj/gGreatFairyEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_ei/gStingerEyeTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_fa/gFaEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_fa/gFaEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_fd/gVolvagiaEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_fd/gVolvagiaEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_fd2/gHoleVolvagiaEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_fd2/gHoleVolvagiaEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_firefly/gFireKeeseEyeTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_firefly/gKeeseEyeTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_fish/gFishingOwnerEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_fish/gFishingOwnerEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_fu/gWindmillManEyeAngryTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_ganon/gGanondorfCrazedEyeTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_ganon/gGanondorfEmptyEyeTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_ganon/gGanondorfNormalEyeTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_ganon2/gGanonEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_ganon2/gGanonEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_ge1/gGerudoWhiteEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_ge1/gGerudoWhiteEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_geldb/gGerudoRedEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_geldb/gGerudoRedEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_gla/gGerudoPurpleEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_gla/gGerudoPurpleEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_gnd/gPhantomGanonEyeTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_gndd/gYoungGanondorfEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_gndd/gYoungGanondorfEyeLookingDownTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_gndd/gYoungGanondorfEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_gol/gObjectGolEyeIrisTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_gol/gObjectGolEyeWhiteTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_goma/gGohmaEyeTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_gr/gNiwGirlEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_gr/gNiwGirlEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_hni/gHorseIngoEyeTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_horse/gEponaEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_horse/gEponaEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_horse_ganon/gHorseGanonEyeTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_horse_link_child/gChildEponaEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_horse_link_child/gChildEponaEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_horse_normal/gHorseNormalEyeTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_horse_zelda/gHorseZeldaEyeTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_human/gHumanEyeLookDownOpen2Tex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_human/gHumanEyeLookDownOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_human/gHumanEyeLookForwardHalf2Tex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_human/gHumanEyeLookForwardHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_human/gHumanEyeLookForwardOpen2Tex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_human/gHumanEyeLookForwardOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_human/gHumanEyeLookLeftHalf2Tex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_human/gHumanEyeLookLeftHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_human/gHumanEyeLookLeftOpen2Tex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_human/gHumanEyeLookLeftOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_human/gHumanEyeLookRightHalf2Tex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_human/gHumanEyeLookRightHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_human/gHumanEyeLookRightOpen2Tex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_human/gHumanEyeLookRightOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_human/gHumanEyeLookUpOpen2Tex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_human/gHumanEyeLookUpOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_ik/gIronKnuckleGerudoEyeTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_im/gImpaEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_im/gImpaEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_in/gIngoEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_in/gIngoEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_in/gIngoUnusedEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_in/gIngoUnusedEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_in/gIngoUnusedEyeTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_jj/gJabuJabuEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_jj/gJabuJabuEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_kw1/gKw1EyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_kw1/gKw1EyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_kw1/gKw1UnusedEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_kz/gKzEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_kz/gKzEyeOpen2Tex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_kz/gKzEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_link_boy/gLinkAdultEyesHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_link_boy/gLinkAdultEyesOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_link_boy/gLinkAdultEyesRollLeftTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_link_boy/gLinkAdultEyesRollRightTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_link_boy/gLinkAdultEyesShockTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_link_boy/gLinkAdultEyesUnk1Tex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_link_boy/gLinkAdultEyesUnk2Tex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_link_child/gLinkChildEyesHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_link_child/gLinkChildEyesOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_link_child/gLinkChildEyesRollLeftTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_link_child/gLinkChildEyesRollRightTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_link_child/gLinkChildEyesShockTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_link_child/gLinkChildEyesUnk1Tex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_link_child/gLinkChildEyesUnk2Tex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_ma1/gMalonChildEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_ma1/gMalonChildEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_ma2/gMalonAdultEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_ma2/gMalonAdultEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_masterkokirihead/gKokiriShopkeeperEyeDefaultTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_masterkokirihead/gKokiriShopkeeperEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_masterkokirihead/gKokiriShopkeeperEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_md/gMidoEyeAngryTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_md/gMidoEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_md/gMidoEyeLookingUpTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_md/gMidoEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_ms/gBeanSalesmanEyeTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_nb/gNabooruEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_nb/gNabooruEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_nb/gNabooruEyeWideTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_niw/gCuccoEyeTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_nwc/gCuccoChickEyeTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_oF1d_map/gGoronCsEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_oF1d_map/gGoronCsEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_okuta/gOctorokEyeTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_ossan/gOssanEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_ossan/gOssanEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_owl/gObjOwlEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_owl/gObjOwlEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_rd/gGibdoEyeTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_rs/gBombchuShopkeeperEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_rs/gBombchuShopkeeperEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_ru1/gRutoChildEyeHalf2Tex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_ru1/gRutoChildEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_ru1/gRutoChildEyeHalfWithBlushTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_ru1/gRutoChildEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_ru1/gRutoChildEyeRollLeftTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_ru2/gAdultRutoEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_ru2/gAdultRutoEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_sa/gSariaEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_sa/gSariaEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_sa/gSariaEyeSadTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_sa/gSariaEyeSuprisedTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_shopnuts/gBusinessScrubEyeTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_sk2/gStalfosEyeTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_skb/gStalchildEyeTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_ta/gTalonEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_ta/gTalonEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_tk/gDampeEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_tk/gDampeEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_tr/gKotakeKoumeEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_tr/gKotakeKoumeEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_tw/gTwinrovaEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_tw/gTwinrovaEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_tw/gTwinrovaKotakeKoumeEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_tw/gTwinrovaKotakeKoumeEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_vm/gBeamosEyeTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_wf/gWolfosNormalEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_wf/gWolfosNormalEyeNarrowTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_wf/gWolfosNormalEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_wf/gWolfosWhiteEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_wf/gWolfosWhiteEyeNarrowTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_wf/gWolfosWhiteEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_xc/gSheikEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_xc/gSheikEyeSquintingTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_zf/gZfDinolfosNormalEyeTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_zl1/gChildZelda1EyeHalf1Tex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_zl1/gChildZelda1EyeHalf2Tex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_zl1/gChildZelda1EyeOpenLookingLeftTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_zl1/gChildZelda1EyeOpenLookingRightTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_zl1/gChildZelda1EyeOpenLookingUpRightTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_zl1/gChildZelda1EyeWideTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_zl2/gZelda2Eye03Tex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_zl2/gZelda2Eye04Tex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_zl2/gZelda2Eye05Tex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_zl2/gZelda2Eye06Tex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_zl2/gZelda2Eye07Tex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_zl2/gZelda2Eye08Tex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_zl2/gZelda2EyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_zl2/gZelda2EyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_zl2/gZelda2EyeUnusedTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_zl4/gChildZeldaEyeInTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_zl4/gChildZeldaEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_zl4/gChildZeldaEyeOutTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_zl4/gChildZeldaEyeSquintTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_zl4/gChildZeldaEyeWideTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_zo/gZoraEyeHalfTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  },
+  {
+   "texture": "objects/object_zo/gZoraEyeOpenTex",
+   "shading": "eye",
+   "eyeMask": "auto"
+  }
+ ]
+}
