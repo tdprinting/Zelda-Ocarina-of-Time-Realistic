@@ -14,12 +14,13 @@
 #include <unordered_set>
 #include <vector>
 
+#include "soh/ResourceManagerHelpers.h"
+
 extern "C" {
 #include "macros.h"
 #include "functions.h"
 #include "variables.h"
 #include "objects/object_link_boy/object_link_boy.h"
-#include "soh/ResourceManagerHelpers.h"
 }
 
 namespace PlayerModel {
@@ -269,7 +270,7 @@ extern "C" void PlayerProps_Begin(void) {
     sDebugTurned = yaw != 0;
     if (sDebugTurned) {
         Matrix_Push();
-        Matrix_RotateY(yaw * (M_PI / 180.0f), MTXMODE_APPLY);
+        Matrix_RotateY(yaw * ((float)M_PI / 180.0f), MTXMODE_APPLY);
     }
 }
 

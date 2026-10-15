@@ -16,12 +16,13 @@
 #include <unordered_map>
 #include <vector>
 
+#include "soh/ResourceManagerHelpers.h"
+
 extern "C" {
 #include "macros.h"
 #include "functions.h"
 #include "variables.h"
 #include "objects/object_link_child/object_link_child.h"
-#include "soh/ResourceManagerHelpers.h"
 extern PlayState* gPlayState;
 s32 Player_IsCustomLinkModel(void);
 }
@@ -405,7 +406,7 @@ extern "C" void PlayerModel_Begin(PlayState* play, void* player, s32 eyeIndex, s
     sDebugTurned = yaw != 0;
     if (sDebugTurned) {
         Matrix_Push();
-        Matrix_RotateY(yaw * (M_PI / 180.0f), MTXMODE_APPLY);
+        Matrix_RotateY(yaw * ((float)M_PI / 180.0f), MTXMODE_APPLY);
     }
     MtxF base;
     Matrix_Get(&base);
@@ -498,7 +499,7 @@ extern "C" void PlayerModel_End(PlayState* play) {
     }
     if (sPlayer != nullptr) {
         static s32 sLastSurfaceFrame = -1;
-        if (play->gameplayFrames != sLastSurfaceFrame) {
+        if ((s32)play->gameplayFrames != sLastSurfaceFrame) {
             sLastSurfaceFrame = play->gameplayFrames;
             const float modelScale = std::sqrt(sBase.m[0][0] * sBase.m[0][0] + sBase.m[0][1] * sBase.m[0][1] +
                                                sBase.m[0][2] * sBase.m[0][2]);
