@@ -16,9 +16,11 @@ units (5000 per metre, +Z forward, +Y up, +X = Link's left).
 | 4. Build the armature (OoT limbs + hat and skirt cloth chains) and skin weights | `rig.py -- clean.blend skel_fit.json rig.blend 0 landmarks.json` | `rig.blend` |
 | 5. Clean up weights (hands, hat, skirt), split by UV, export | `export.py -- rig.blend skel_fit.json landmarks.json child-link.lmdl` | `child-link.npz` |
 | 6. Face: straighten the head, eyeballs and eyelids, mouth, teeth, blendshapes | `face.py child-link.npz face.npz` | `face.npz` |
-| 7. Write the game file | `write_lmdl.py face.npz skel_fit.json child-link.lmdl` | `.lmdl` v2 |
-| 8. Material maps | `make_maps.py <texture prefix> maps/`, `make_eye.py maps/` | roughness/metal, skin mask, eye textures |
-| 9. Wet/dirt lookup | `make_surf.py child-link.npz maps/classes.npy child-link.surf` | UV-space surface classes and heights |
+| 7. Seat the feet flat and the hands the way the original limbs sit | `orient_limbs.py face.npz skel_fit.json landmarks.json` | binds rewritten in place |
+| 8. Repaint the outfit as Link's original clothes, repair stretched UVs, material maps | `outfit.py face.npz basecolor.png normal.png maps/` | `maps/model.npz`, base colour, normal, roughness/metal, skin mask, classes |
+| 9. Write the game file | `write_lmdl.py maps/model.npz skel_fit.json child-link.lmdl` | `.lmdl` v2 |
+| 10. Eye textures | `make_eye.py maps/` | eye base colour and normal |
+| 11. Wet/dirt lookup | `make_surf.py maps/model.npz maps/classes.npy child-link.surf` | UV-space surface classes and heights |
 
 Checks: `render_pose.py` poses the model with real animations (`anim:frame:azimuth`), `render_face.py` renders
 blendshapes, eye gaze and eyelids, `ortho_npz.py` gives a measured front view for placing face landmarks.
