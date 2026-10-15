@@ -198,6 +198,7 @@
 #define G_SETTARGETINTERPINDEX 0x46
 #define G_SETTILESIZE_LERP 0x4a
 #define G_SETFACEPARAMS 0x4b
+#define G_SETHUDREGION 0x50
 
 /*
  * The following commands are the "generated" RDP commands; the user
@@ -2895,6 +2896,24 @@ typedef struct {
         _g->words.w0 = _SHIFTL(G_EXTRAGEOMETRYMODE, 24, 8) | _SHIFTL(~(u32)(c), 0, 24); \
         _g->words.w1 = (u32)(s);                                                        \
     })
+
+/*
+ * Draws the 2D and overlay graphics that follow into a sub-rectangle of the screen, as if that rectangle were the
+ * whole screen with its own aspect ratio (used for split-screen HUDs). x, y, w and h are in native screen units
+ * (320x240). For a region narrower than 4:3, pass scalePct = 100 * (region aspect / (4/3)): the 4:3 layout then
+ * spans the region's width and each element is kept in shape and pushed to the nearer of the region's top and
+ * bottom edges, so nothing crowds. With 100 (or 0) the region keeps its own aspect ratio as a widescreen screen
+ * would. A width of 0 turns the region off.
+ */
+#define gSPSetHudRegion(pkt, x, y, w, h, scalePct)                                                           \
+    _DW({                                                                                                    \
+        Gfx* _g = (Gfx*)(pkt);                                                                               \
+                                                                                                             \
+        _g->words.w0 = _SHIFTL(G_SETHUDREGION, 24, 8) | _SHIFTL((u32)(x), 12, 12) | _SHIFTL((u32)(y), 0, 12); \
+        _g->words.w1 = _SHIFTL((u32)(w), 20, 12) | _SHIFTL((u32)(h), 8, 12) | _SHIFTL((u32)(scalePct), 0, 8); \
+    })
+
+#define gSPClearHudRegion(pkt) gSPSetHudRegion((pkt), 0, 0, 0, 0, 0)
 
 #define gSPSetExtraGeometryMode(pkt, word) gSPExtraGeometryMode((pkt), 0, word)
 #define gSPClearExtraGeometryMode(pkt, word) gSPExtraGeometryMode((pkt), word, 0)

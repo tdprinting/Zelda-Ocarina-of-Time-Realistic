@@ -2244,7 +2244,17 @@ extern "C" void OTRControllerCallback(uint8_t rumble) {
     }
 }
 
+// Aspect ratio that HUD layout uses instead of the window's while a split-screen HUD is drawn (0 = window's)
+static float sHudAspectRatioOverride = 0.0f;
+
+extern "C" void OTRSetHudAspectRatioOverride(float aspectRatio) {
+    sHudAspectRatioOverride = aspectRatio;
+}
+
 extern "C" float OTRGetAspectRatio() {
+    if (sHudAspectRatioOverride > 0.0f) {
+        return sHudAspectRatioOverride;
+    }
     return Ship::Context::GetRawInstance()->GetWindow()->GetAspectRatio();
 }
 

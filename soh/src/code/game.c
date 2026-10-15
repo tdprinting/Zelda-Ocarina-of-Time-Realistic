@@ -5,6 +5,7 @@
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/ResourceManagerHelpers.h"
+#include "soh/Enhancements/ExtraModes/SplitScreenCoop.h"
 
 #include "message_data_static.h"
 #include <libultraship/bridge/consolevariablebridge.h>
@@ -107,7 +108,8 @@ void func_800C4344(GameState* gameState) {
         HREG(95) = CHECK_BTN_ALL(selectedInput->press.button, hReg82);
     }
 
-    if (CVarGetInteger(CVAR_DEVELOPER_TOOLS("RegEditEnabled"), 0) || gIsCtrlr2Valid) {
+    // SoH: controller 2 drives Player 2 in split-screen co-op, so keep it out of the register editor
+    if (CVarGetInteger(CVAR_DEVELOPER_TOOLS("RegEditEnabled"), 0) || (gIsCtrlr2Valid && !Coop_IsEnabled())) {
         func_8006390C(&gameState->input[1]);
     }
 

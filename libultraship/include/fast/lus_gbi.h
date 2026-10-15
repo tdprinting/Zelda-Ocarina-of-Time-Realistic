@@ -81,6 +81,7 @@ constexpr int8_t RDP_G_VTX_WIDE = OPCODE(0x48);
 constexpr int8_t RDP_G_TRI1_WIDE = OPCODE(0x49);
 constexpr int8_t RDP_G_SETTILESIZE_LERP = OPCODE(0x4a);
 constexpr int8_t OTR_G_SETFACEPARAMS = OPCODE(0x4b);
+constexpr int8_t OTR_G_SETHUDREGION = OPCODE(0x50);
 
 /*
  * The following commands are the "generated" RDP commands; the user
