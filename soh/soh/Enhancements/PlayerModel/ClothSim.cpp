@@ -162,7 +162,7 @@ static void Setup(const Model& model) {
 
     sState.headBone = kLimbHead;
     // Centre of the head in bind pose, expressed in the head limb's space.
-    V3 headCenter = { 0.0f, 3900.0f, 330.0f };
+    V3 headCenter = { 0.0f, 3594.0f, 345.0f };
     sState.headCenterLocal = Apply(model.bones[kLimbHead].invBind, headCenter);
 }
 
@@ -208,14 +208,16 @@ void ClothSim_Update(PlayState* play, const Model& model, const Mat4& base, Mat4
     auto limbCapsule = [&](int a, int b, float r) {
         caps.push_back({ Origin(world(a)), Origin(world(b)), r * scale });
     };
-    limbCapsule(kLimbLeftThigh, kLimbLeftShin, 200.0f);
-    limbCapsule(kLimbRightThigh, kLimbRightShin, 200.0f);
-    limbCapsule(kLimbLeftShin, kLimbLeftFoot, 150.0f);
-    limbCapsule(kLimbRightShin, kLimbRightFoot, 150.0f);
+    // Radii fit the model as refitted to the original skeleton (tools/player-model/retarget.py): slimmer legs and a
+    // narrower torso, so the skirt and the hat tail rest outside the body.
+    limbCapsule(kLimbLeftThigh, kLimbLeftShin, 180.0f);
+    limbCapsule(kLimbRightThigh, kLimbRightShin, 180.0f);
+    limbCapsule(kLimbLeftShin, kLimbLeftFoot, 135.0f);
+    limbCapsule(kLimbRightShin, kLimbRightFoot, 135.0f);
     {
         V3 head = Apply(world(sState.headBone), sState.headCenterLocal);
-        caps.push_back({ head, head, 620.0f * scale });
-        caps.push_back({ Origin(world(kLimbUpper)), head, 430.0f * scale });
+        caps.push_back({ head, head, 580.0f * scale });
+        caps.push_back({ Origin(world(kLimbUpper)), head, 335.0f * scale });
     }
 
     const s32 frame = play != nullptr ? play->gameplayFrames : 0;

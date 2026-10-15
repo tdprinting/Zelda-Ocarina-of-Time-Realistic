@@ -66,6 +66,48 @@ keep = np.ones(len(T), bool); keep[:n_main][drop] = False
 D['tris'] = T[keep]
 D['mat_ranges'] = np.array([[0, n_main - drop.sum()], [n_main - drop.sum(), len(T) - n_main]])
 print(f'removed {drop.sum()} loose triangles, re-mapped {bad.sum()} stretched ones')
+
+# The mouth was an open slit into the hollow head, so the collar showed through it. Close it from behind with a
+# dark backing (both sides, on the head bone), textured from a dark patch painted in an unused part of the atlas.
+MOUTH_UV = (0.0, 0.0)  # placed once the atlas coverage is known
+def add_mouth_backing(D, centre=(0.0, 3750.0, 650.0), rx=200.0, ry=90.0, seg=16):
+    head_bone = names.index('Head')
+    n0 = len(D['pos'])
+    ring = [(centre[0] + rx * np.cos(a), centre[1] + ry * np.sin(a), centre[2]) for a in np.linspace(0, 2 * np.pi, seg, endpoint=False)]
+    pts = np.array([centre] + ring)
+    D['pos'] = np.concatenate([D['pos'], pts]); D['nrm'] = np.concatenate([D['nrm'], np.tile([0.0, 0.0, 1.0], (len(pts), 1))])
+    D['uv'] = np.concatenate([D['uv'], np.tile(MOUTH_UV, (len(pts), 1))])
+    D['bi'] = np.concatenate([D['bi'], np.tile([head_bone, 0, 0, 0], (len(pts), 1)).astype(D['bi'].dtype)])
+    D['bw'] = np.concatenate([D['bw'], np.tile([1.0, 0, 0, 0], (len(pts), 1)).astype(D['bw'].dtype)])
+    tris = []
+    for k in range(seg):
+        a, b = n0 + 1 + k, n0 + 1 + (k + 1) % seg
+        tris += [[n0, a, b], [n0, b, a]]
+    D['mouth_verts'] = np.arange(n0, n0 + len(pts))
+    nm = int(D['mat_ranges'][0][1])
+    D['tris'] = np.concatenate([D['tris'][:nm], np.array(tris, D['tris'].dtype), D['tris'][nm:]])
+    D['mat_ranges'] = np.array([[0, nm + len(tris)], [nm + len(tris), int(D['mat_ranges'][1][1])]])
+add_mouth_backing(D)
+
+# Upper eyelids: the source lids end in a straight horizontal cut, which reads as a flat shelf over the eye. Arch
+# the lower edge (lifted towards the corners, like a real lid following the eyeball) and darken it into a lash line.
+def arch_lids(D, lift=0.4):
+    P = D['pos']; lids = []
+    for side, (lid, eye) in enumerate((('LidR', 0), ('LidL', 1))):
+        c = np.array(D['eye_centres'][eye], float)
+        vs = np.nonzero(D['bi'][:, 0] == names.index(lid))[0]
+        d = P[vs] - c
+        rad = np.linalg.norm(d, axis=1)
+        elev = np.arctan2(d[:, 1], np.hypot(d[:, 0], d[:, 2]))
+        e1 = elev.max()
+        t = np.abs(d[:, 0]) / max(np.abs(d[:, 0]).max(), 1e-6)
+        elev2 = e1 - (e1 - elev) * (1 - lift * t ** 2)
+        P[vs, 1] += rad * (np.sin(elev2) - np.sin(elev))  # lift only, so the lid keeps its width
+        lx_ = P[vs, 0]; h = P[vs, 1] - np.array([P[vs, 1][np.abs(lx_ - v) < 10].min() for v in lx_])  # above the lid edge
+        u = (P[vs, 0] - P[vs, 0].min()) / max(np.ptp(P[vs, 0]), 1e-6)
+        lids.append(np.stack([vs, u, h], 1))
+    D['lid_param'] = np.concatenate(lids)
+arch_lids(D)
 P, UV, T, BI = D['pos'], D['uv'], D['tris'], D['bi']
 TM = T[:int(D['mat_ranges'][0][1])]
 
@@ -92,6 +134,30 @@ for t in TM:
     pos[sub][msk] = (W @ P[t])[msk]
     bone[sub][msk] = BI[t[np.argmax(W, -1)], 0][msk]
 covered = bone < 255
+# The mouth backing's patch: the texel furthest from any UV chart.
+dist = ndimage.distance_transform_edt(~covered)
+my, mxp = np.unravel_index(np.argmax(dist), dist.shape)
+D['uv'][D['mouth_verts']] = ((mxp + 0.5) / N, 1 - (my + 0.5) / N)
+# The strip inside the mouth slit has all its UVs collapsed onto one texel of the costume, which showed as a green
+# line between the lips: it samples the mouth interior instead.
+Pm = D['pos']
+near = (np.abs(Pm[:, 0]) < 200) & (np.abs(Pm[:, 1] - 3750) < 60) & (Pm[:, 2] > 600)
+_, inv, cnt = np.unique(np.round(D['uv'] * 4 * N), axis=0, return_inverse=True, return_counts=True)
+strip = near & (cnt[inv.ravel()] >= 8)
+while True:  # whole components only, so nothing else stretches
+    part = D['tris'][strip[D['tris']].any(1) & ~strip[D['tris']].all(1)]
+    if not len(part): break
+    strip[part.ravel()] = False
+D['uv'][strip] = ((mxp + 0.5) / N, 1 - (my + 0.5) / N)
+# The upper lids share a few texels with the brow, so they get a patch of their own: skin fading to a dark lash
+# line along the lower edge (u runs across the lid, v up from the edge).
+dist[max(0, my - 16):my + 17, max(0, mxp - 16):mxp + 17] = 0
+ly, lx = np.unravel_index(np.argmax(dist), dist.shape)
+assert dist[ly, lx] > 14, 'no room in the atlas for the eyelid patch'
+LID_H = 60.0
+lp = D.pop('lid_param'); lv = lp[:, 0].astype(int)
+D['uv'][lv, 0] = (lx - 10 + 20 * lp[:, 1] + 0.5) / N
+D['uv'][lv, 1] = 1 - (ly + 10 - 20 * np.clip(lp[:, 2] / LID_H, 0, 1) + 0.5) / N
 
 # ------------------------------------------------------------------------------------------- colour classes
 mx = base.max(2); mn = base.min(2); s = np.where(mx > 1e-4, (mx - mn) / np.maximum(mx, 1e-4), 0)
@@ -141,7 +207,9 @@ reg[feet & (y < 70)] = SOLE
 # Head and hat: keep the painted face and hair; green cloth and the dark band are the hat.
 reg[head | hatb] = FACE
 reg[(head | hatb) & is_hair] = HAIR
-reg[(head | hatb) & is_green] = HAT
+reg[hatb & is_green] = HAT
+reg[head & is_green & (y > 4150)] = HAT
+reg[head & is_green & (y <= 4150)] = TUNIC  # the collar, weighted to the head
 reg[(head & (y > 4230) | hatb) & is_dark & ~is_hair] = HAT
 reg[hatb & ~is_hair] = HAT
 reg[head & (y > 4620) & ~is_hair] = HAT  # the crown, above the fringe
@@ -177,6 +245,13 @@ low = ndimage.gaussian_filter(lum * mf, 6) / np.maximum(ndimage.gaussian_filter(
 ratio = np.clip(lum / np.maximum(low, 1e-4), 0.6, 1.4) ** 0.5
 out[body_skin] = np.clip(tone[body_skin] * ratio[body_skin, None], 0, 1) ** (1 / 2.2)
 
+# The source paints dark purple bags under the eyes, which make the face look tired and the eyes sunken. Blend
+# them towards the surrounding skin tone.
+for ec in D['eye_centres']:
+    r2 = ((x - ec[0]) / 150) ** 2 + ((y - ec[1] + 95) / 75) ** 2
+    w = (0.65 * np.exp(-1.5 * r2) * ((reg == FACE) & covered & (z > 400)))[..., None]
+    out = ((1 - w) * out ** 2.2 + w * tone) ** (1 / 2.2)
+lid_skin = (0.88 * tone[(reg == FACE) & covered & (np.abs(np.abs(x) - 205) < 120) & (np.abs(y - 4060) < 80)].mean(0)) ** (1 / 2.2)
 # Bleed every part's colour into the gaps between UV charts so filtering never picks up a neighbour.
 idx = ndimage.distance_transform_edt(~covered, return_distances=False, return_indices=True)
 out = out[idx[0], idx[1]]
@@ -204,11 +279,17 @@ skin = ndimage.gaussian_filter(((reg_f == SKIN) | face_skin).astype(np.float32),
 
 def save(arr, name):
     Image.fromarray(np.clip(arr * 255 + 0.5, 0, 255).astype(np.uint8)).save(f'{outdir}/{name}')
+out[my - 4:my + 5, mxp - 4:mxp + 5] = (0.16, 0.06, 0.06)  # mouth interior (see add_mouth_backing)
+for row in range(ly - 12, ly + 13):  # eyelid patch (see arch_lids)
+    h = np.clip((ly + 10 - row) / 20, 0, 1) * LID_H
+    f = np.clip(1.25 - h / 16, 0, 1) ** 1.2
+    out[row, lx - 12:lx + 13] = lid_skin * (1 - 0.88 * f) + np.array([0.09, 0.055, 0.04]) * 0.88 * f
 save(np.dstack([out, np.ones((N, N))]), 'basecolor.png')
 save(np.dstack([nrm * 0.5 + 0.5, np.ones((N, N))]), 'normal.png')
 save(np.dstack([np.ones((N, N)), rough, metal, np.ones((N, N))]), 'rm.png')
 save(np.dstack([skin, np.zeros((N, N)), np.zeros((N, N)), np.ones((N, N))]), 'skinmask.png')
 np.save(f'{outdir}/classes.npy', classes)
+D.pop('mouth_verts')
 np.savez(f'{outdir}/model.npz', **D)
 pal = np.array([[0, 0, 0], [40, 160, 40], [90, 220, 90], [150, 40, 30], [255, 210, 60], [110, 70, 40], [180, 140, 90],
                 [40, 30, 20], [255, 180, 150], [255, 230, 80], [255, 140, 200]], np.uint8)

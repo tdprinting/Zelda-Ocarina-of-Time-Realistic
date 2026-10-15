@@ -16,10 +16,10 @@ def fbm(freq, octaves, seed):
         im = np.asarray(Image.fromarray(n).resize((S, S), Image.BICUBIC))
         g += amp * im; tot += amp; amp *= 0.5
     return g / tot
-IRIS = 0.47   # iris radius as a fraction of the projected eyeball radius (big, friendly eyes)
-PUPIL = 0.21
+IRIS = 0.56   # iris radius as a fraction of the projected eyeball radius: big like the original's, so the lids
+PUPIL = 0.235  # touch the iris and no white shows all round it (a staring, lifeless look)
 # sclera: warm white, a little darker and pinker towards the corners, faint veins
-scl = np.stack([np.full_like(r, 0.86), np.full_like(r, 0.83), np.full_like(r, 0.80)], -1)
+scl = np.stack([np.full_like(r, 0.80), np.full_like(r, 0.77), np.full_like(r, 0.74)], -1)
 scl *= (1 - 0.18 * np.clip((r - 0.55) / 0.45, 0, 1) ** 2)[..., None]
 veins = np.clip(fbm(24, 3, 1) * 3 - 2.2, 0, 1) * np.clip((r - 0.62) / 0.3, 0, 1)
 scl[..., 1] -= 0.05 * veins; scl[..., 2] -= 0.04 * veins
@@ -41,6 +41,15 @@ edge = np.clip((ri - 0.97) / 0.06, 0, 1)                    # soften iris/sclera
 col = iris * (1 - edge[..., None]) * (ri < 1.03)[..., None] + col * (edge[..., None] * (ri < 1.03)[..., None] + (ri >= 1.03)[..., None])
 pup = np.clip((PUPIL - r) / 0.012 + 0.5, 0, 1)
 col = col * (1 - pup[..., None]) + np.array([0.015, 0.015, 0.02]) * pup[..., None]
+# Shadow of the upper lid and lashes across the top of the eye, and light pooling in the lower iris: what makes a
+# real eye read as wet and alive rather than a flat painted disc.
+lid = np.clip((v - 0.02) / 0.32, 0, 1) ** 1.3
+col = col * (1 - 0.6 * lid[..., None])
+pool = np.exp(-((u / 0.22) ** 2 + ((v + 0.13) / 0.1) ** 2)) * (ri < 0.95) * (r > PUPIL)
+col = col + np.array([0.10, 0.16, 0.22]) * pool[..., None]
+# A soft catchlight (the window/sky reflection) on the upper left of the iris.
+catch = np.exp(-(((u + 0.10) / 0.045) ** 2 + ((v - 0.10) / 0.04) ** 2))
+col = col * (1 - 0.8 * catch[..., None]) + 0.95 * catch[..., None]
 img = (np.clip(col, 0, 1) ** (1 / 1.0) * 255).astype(np.uint8)
 rgba = np.dstack([img, np.full((S, S), 255, np.uint8)])
 Image.fromarray(rgba).save(f'{out}/eye_basecolor.png')

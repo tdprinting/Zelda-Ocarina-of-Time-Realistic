@@ -18,9 +18,10 @@ units (5000 per metre, +Z forward, +Y up, +X = Link's left).
 | 6. Face: straighten the head, eyeballs and eyelids, mouth, teeth, blendshapes | `face.py child-link.npz face.npz` | `face.npz` |
 | 7. Seat the feet flat and the hands the way the original limbs sit | `orient_limbs.py face.npz skel_fit.json landmarks.json` | binds rewritten in place |
 | 8. Repaint the outfit as Link's original clothes, repair stretched UVs, material maps | `outfit.py face.npz basecolor.png normal.png maps/` | `maps/model.npz`, base colour, normal, roughness/metal, skin mask, classes |
-| 9. Write the game file | `write_lmdl.py maps/model.npz skel_fit.json child-link.lmdl` | `.lmdl` v2 |
+| 8b. Refit the body to child Link's original skeleton and proportions (`OOT_O2R` set) | `retarget.py maps/model.npz skel_fit.json fit/model.npz fit/skel_fit.json` | refitted model and skeleton |
+| 9. Write the game file | `write_lmdl.py fit/model.npz fit/skel_fit.json child-link.lmdl` | `.lmdl` v2 |
 | 10. Eye textures | `make_eye.py maps/` | eye base colour and normal |
-| 11. Wet/dirt lookup | `make_surf.py maps/model.npz maps/classes.npy child-link.surf` | UV-space surface classes and heights |
+| 11. Wet/dirt lookup | `make_surf.py fit/model.npz maps/classes.npy child-link.surf` | UV-space surface classes and heights |
 
 Checks: `render_pose.py` poses the model with real animations (`anim:frame:azimuth`), `render_face.py` renders
 blendshapes, eye gaze and eyelids, `ortho_npz.py` gives a measured front view for placing face landmarks.
