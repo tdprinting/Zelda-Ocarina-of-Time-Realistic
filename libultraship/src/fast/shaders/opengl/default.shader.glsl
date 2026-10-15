@@ -192,9 +192,9 @@
     @if(o_material_eye)
     // Expressive eyes. uEyeInfo: what the renderer found in the eye texture (MaterialState::eyeInfo); uFace: the
     // face from G_SETFACEPARAMS ([0] look target, weight; [1] saccade xy, upper lid, lower lid; [2] tilt, pupil,
-    // active)
+    // active; [3] head origin, set)
     uniform vec4 uEyeInfo[9];
-    uniform @{highp} vec4 uFace[3];
+    uniform @{highp} vec4 uFace[4];
     @end
 
     // Tangent frame from screen-space derivatives (Schüler's cotangent frame), so meshes need no tangents
@@ -442,44 +442,58 @@
                 vec2 irisC = clamp(vec2((eyeRest.x + eyeGaze.x) * eyeAspect, eyeRest.y + eyeGaze.y), -vec2(max(eyeAspect - irisR * 0.8, 0.0), max(1.0 - irisR * 0.6, 0.0)),
                                    vec2(max(eyeAspect - irisR * 0.8, 0.0), max(1.0 - irisR * 0.6, 0.0)));
 
-                // Iris and pupil, at screen resolution: radial fibres, a brighter ring round the pupil, a dark
-                // limbal ring at the edge, and a crisp pupil
+                // Iris and pupil: the vanilla iris itself, moved to where the eye looks, with its pupil scaled by
+                // remapping the distance from its centre. It keeps the painted colors and catchlights.
                 vec2 eyeD = vec2(eyeQ.x * eyeAspect, eyeQ.y) - irisC;
                 float eyeR = length(eyeD);
                 float eyeAa = max(fwidth(eyeR), 1e-3);
-                float eyeAng = atan(eyeD.y, eyeD.x + 1e-6);
-                float fibres = mix(0.5 + 0.5 * sin(eyeAng * 31.0 + 3.0 * sin(eyeAng * 7.0)),
-                                   0.5 + 0.5 * sin(eyeAng * 53.0 + 1.7), 0.4);
-                float eyeRn = eyeR / irisR;
-                vec3 irisCol = eyeIris.rgb * (0.72 + 0.28 * fibres) * mix(1.3, 1.0, smoothstep(0.45, 0.7, eyeRn));
-                irisCol = mix(irisCol, eyeIris.rgb * 0.3, smoothstep(0.78, 1.0, eyeRn));
-                float pupilR = irisR * 0.45 * uFace[2].y;
+                float pupilR = irisR * 0.42 * clamp(uFace[2].y, 0.3, 1.8);
+                float vanillaPupilR = irisR * 0.42;
+                float sampleR = eyeR < pupilR ? eyeR * vanillaPupilR / pupilR
+                                              : vanillaPupilR + (eyeR - pupilR) * (irisR - vanillaPupilR) / max(irisR - pupilR, 1e-3);
+                vec2 irisSample = vec2(eyeRest.x * eyeAspect, eyeRest.y) + eyeD * (sampleR / max(eyeR, 1e-4));
+                vec2 irisUv = eyeGeo.xy + vec2(irisSample.x / eyeAspect, -irisSample.y) * eyeGeo.zw;
+                vec3 irisCol = @{texture}(uTex0, irisUv).rgb;
                 float irisA = 1.0 - smoothstep(irisR - eyeAa, irisR + eyeAa, eyeR);
-                float pupilA = 1.0 - smoothstep(pupilR - eyeAa, pupilR + eyeAa, eyeR);
                 float eyeRho = length(eyeQ);
                 vec3 eyeCol = eyeSclera.rgb * (1.0 - 0.3 * smoothstep(0.35, 1.0, eyeRho));
                 eyeCol = mix(eyeCol, irisCol, irisA);
-                eyeCol = mix(eyeCol, vec3(0.03), pupilA);
                 eyeCol *= 1.0 - 0.25 * smoothstep(0.2, 1.0, eyeQ.y); // the upper lid's shadow
 
                 // Lids: skin from the top down to the upper lid line (slanted by tilt, towards the nose) and from
                 // the bottom up to the lower lid, which rises along an upward curve (a smile or squint)
                 float upperLid = clamp(uFace[1].z, 0.0, 1.0), lowerLid = clamp(uFace[1].w, 0.0, 1.0);
-                float towardNose = eyeQ.x * eyeSclera.w;
+                // The nose is on the side of the eye facing the head's origin, else where the texture's lashes say
+                float noseSide = uFace[3].w > 0.5 ? sign(dot(eyeU, uFace[3].xyz - vWorldPos) + 1e-4) : eyeSclera.w;
+                float towardNose = eyeQ.x * noseSide;
+                // Tilt drops the lid's inner end (anger, strain: +) or its outer end (worry, sadness: -) by up to
+                // most of the eye's height
+                float eyeTilt = clamp(uFace[2].x, -1.0, 1.0);
+                float tiltDrop = eyeTilt > 0.0 ? eyeTilt * (0.5 + 0.5 * towardNose) : -eyeTilt * (0.5 - 0.5 * towardNose);
                 float lidU = 1.25 - 2.45 * upperLid + 0.25 * (1.0 - eyeQ.x * eyeQ.x) * (1.0 - upperLid) -
-                             clamp(uFace[2].x, -1.0, 1.0) * 0.45 * towardNose * (1.0 - 0.5 * upperLid);
+                             1.3 * tiltDrop * (1.0 - upperLid);
                 float lidL = mix(-1.25, lidU - 0.02, lowerLid) + 0.3 * lowerLid * (1.0 - lowerLid) * (1.0 - eyeQ.x * eyeQ.x);
                 float lidAa = max(fwidth(eyeQ.y), 1e-3);
                 eyeLidCover = max(smoothstep(lidU - lidAa, lidU + lidAa, eyeQ.y), 1.0 - smoothstep(lidL - lidAa, lidL + lidAa, eyeQ.y));
-                eyeCol = mix(eyeCol, uEyeInfo[0].rgb * 0.95, eyeLidCover);
+                // Lid skin: the texture's own skin where it already is skin, else the skin color
+                vec3 lidCol = mix(texVal0.rgb, uEyeInfo[0].rgb, smoothstep(0.06, 0.14, distance(texVal0.rgb, uEyeInfo[0].rgb)));
+                eyeCol = mix(eyeCol, lidCol, eyeLidCover);
                 float lashU = 1.0 - smoothstep(0.0, 0.12 + lidAa, abs(eyeQ.y - lidU));
                 float lashL = (1.0 - smoothstep(0.0, 0.05 + lidAa, abs(eyeQ.y - lidL))) * step(0.02, lowerLid);
-                eyeCol = mix(eyeCol, vec3(0.07, 0.05, 0.04), max(lashU, lashL * 0.7));
+                // Lash lines end at the eye's corners
+                float lashSpan = 1.0 - smoothstep(0.95, 1.1, abs(eyeQ.x));
+                eyeCol = mix(eyeCol, vec3(0.07, 0.05, 0.04), max(lashU, lashL * 0.7) * lashSpan);
 
                 // Keep the vanilla eyeliner round the rim of the eye
                 float vanillaLine = (1.0 - smoothstep(0.08, 0.2, dot(texVal0.rgb, vec3(0.3, 0.59, 0.11)))) * smoothstep(0.7, 0.95, eyeRho);
                 eyeCol = mix(eyeCol, texVal0.rgb, vanillaLine * (1.0 - eyeLidCover));
-                float eyeMaskV = eyeMap.r;
+                // A closing lid also covers the vanilla eyeliner round the rim and the eye's pointed corners, just
+                // outside the mask (where the texture is not skin already)
+                float lidReach = (1.0 - smoothstep(0.9, 1.0, length(eyeQ / vec2(1.3, 1.15)))) *
+                                 smoothstep(0.06, 0.14, distance(texVal0.rgb, uEyeInfo[0].rgb));
+                float eyeMaskV = max(eyeMap.r, eyeLidCover * lidReach);
+                // Between two eyes in one texture the filtered offsets blend from one eye to the other: leave it
+                eyeMaskV *= 1.0 - smoothstep(0.02, 0.1, min(eyeMap.a, 1.0 - eyeMap.a));
                 texVal0.rgb = mix(texVal0.rgb, eyeCol, eyeMaskV);
                 eyeLidCover *= eyeMaskV;
             }

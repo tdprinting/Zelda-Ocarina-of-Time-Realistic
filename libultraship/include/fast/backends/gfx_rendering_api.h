@@ -50,8 +50,8 @@ struct MaterialState {
 };
 
 // Expressive eyes, from G_SETFACEPARAMS: [0] look target xyz, look weight; [1] saccade xy, upper lid, lower lid;
-// [2] tilt, pupil, active, unused
-#define FACE_STATE_FLOATS 12
+// [2] tilt, pupil, active, unused; [3] the head's origin in world space (the eye draw's model matrix), set
+#define FACE_STATE_FLOATS 16
 
 struct AmbientOcclusionParams {
     float invP00, invP11; // reciprocal x/y focal scales of the scene projection
