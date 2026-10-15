@@ -1831,6 +1831,7 @@ void Interpreter::SetFaceParams(const void* params) {
     }
     float state[FACE_STATE_FLOATS] = {};
     state[9] = 1.0f;
+    memcpy(&state[12], &mFaceState[12], sizeof(float) * 4); // the head origin follows the draws
     const auto* p = static_cast<const FaceParamsLayout*>(params);
     if (p != nullptr && (p->flags & 1)) {
         memcpy(state, p->lookTarget, sizeof(float) * 3);
@@ -1937,6 +1938,13 @@ void Interpreter::BuildAutoEyeMask(const std::string& texturePath) {
         return skinChromaLen > 0.05f && len2 >= 0.06f * 0.06f && dot < 0.7f * std::sqrt(len2) * skinChromaLen;
     };
     auto opaque = [&](uint32_t i) { return px[i * 4 + 3] > 0; };
+    // A tinted texel that is neither skin nor white: the iris
+    auto isIris = [&](uint32_t i) {
+        const float hi = std::max({ rgb(i, 0), rgb(i, 1), rgb(i, 2) });
+        const float lo = std::min({ rgb(i, 0), rgb(i, 1), rgb(i, 2) });
+        return opaque(i) && !isWhite(i) && lum(i) >= 0.06f && lum(i) < 0.5f && hi - lo > 0.12f &&
+               (hueDiffers(i) || skinDistance(i) > 0.3f);
+    };
     auto neighbours = [&](uint32_t i, uint32_t out[4]) {
         const uint32_t x = i % w, y = i / w;
         out[0] = x > 0 ? i - 1 : i;
@@ -2092,11 +2100,11 @@ void Interpreter::BuildAutoEyeMask(const std::string& texturePath) {
                     maxY = std::max(maxY, (float)(i / w) + 1);
                 }
             }
-            // The grown region can reach into coloured lashes above the eye; frame the eye on its whites instead,
-            // leaving room above them for the iris, which the upper lid often lets rise past the whites
+            // The grown region can reach into coloured lashes above the eye; frame the eye on its opening (the
+            // whites and the iris) instead, leaving room above it for the upper lid
             float wMinX = (float)w, wMinY = (float)h, wMaxX = 0, wMaxY = 0;
             for (uint32_t i = 0; i < w * h; i++) {
-                if (eye[i] && isWhite(i) && skinDistance(i) > 0.12f) {
+                if (eye[i] && ((isWhite(i) && skinDistance(i) > 0.12f) || isIris(i))) {
                     wMinX = std::min(wMinX, (float)(i % w));
                     wMaxX = std::max(wMaxX, (float)(i % w) + 1);
                     wMinY = std::min(wMinY, (float)(i / w));
@@ -2106,7 +2114,7 @@ void Interpreter::BuildAutoEyeMask(const std::string& texturePath) {
             if (wMaxX > wMinX) {
                 minX = std::max(minX, wMinX - 1.0f);
                 maxX = std::min(maxX, wMaxX + 1.0f);
-                minY = std::max(minY, wMinY - 0.6f * (wMaxY - wMinY));
+                minY = std::max(minY, wMinY - 0.3f * (wMaxY - wMinY));
                 maxY = std::min(maxY, wMaxY + 1.0f);
             }
             const float cx = (minX + maxX) * 0.5f, cy = (minY + maxY) * 0.5f;
@@ -2133,15 +2141,12 @@ void Interpreter::BuildAutoEyeMask(const std::string& texturePath) {
                         continue;
                     }
                     const bool inner = ex * ex + ey * ey < 0.7f;
-                    const float hi = std::max({ rgb(i, 0), rgb(i, 1), rgb(i, 2) });
-                    const float lo = std::min({ rgb(i, 0), rgb(i, 1), rgb(i, 2) });
                     if (isWhite(i)) {
                         for (int c = 0; c < 3; c++) {
                             sclera[c] += rgb(i, c);
                         }
                         scleraCount++;
-                    } else if (lum(i) >= 0.06f && lum(i) < 0.5f && hi - lo > 0.12f &&
-                               (hueDiffers(i) || skinDistance(i) > 0.3f)) {
+                    } else if (isIris(i)) {
                         // A tinted texel that is not skin: the iris
                         for (int c = 0; c < 3; c++) {
                             tinted[c] += rgb(i, c);
@@ -2768,6 +2773,18 @@ void Interpreter::GfxSpTri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx
             cc_options |= SHADER_OPT_MATERIAL;
             if (mCurrentMaterial->eye) {
                 cc_options |= SHADER_OPT_MATERIAL_EYE;
+                // Lids slant towards the nose: tell the shader where the head is (its limb's origin)
+                const float(*mtx)[4] = mRsp->modelview_matrix_stack[mRsp->modelview_matrix_stack_size - 1];
+                if (mFaceState[10] > 0.5f &&
+                    (mFaceState[12] != mtx[3][0] || mFaceState[13] != mtx[3][1] || mFaceState[14] != mtx[3][2])) {
+                    float state[FACE_STATE_FLOATS];
+                    memcpy(state, mFaceState, sizeof(state));
+                    state[12] = mtx[3][0];
+                    state[13] = mtx[3][1];
+                    state[14] = mtx[3][2];
+                    state[15] = 1.0f;
+                    ApplyFaceState(state);
+                }
             }
             if (mCurrentMaterial != mBoundMaterial) {
                 Flush();
@@ -5946,6 +5963,7 @@ void Interpreter::StartFrame() {
         mFaceDebug = cvars->GetInteger(CVAR_MODERN_FACE_DEBUG, 0) != 0;
         float state[FACE_STATE_FLOATS] = {};
         state[9] = 1.0f; // pupil
+        memcpy(&state[12], &mFaceState[12], sizeof(float) * 4);
         if (mFaceDebug) {
             auto get = [&](const char* name, float def) {
                 return cvars->GetFloat((std::string(CVAR_MODERN_FACE_DEBUG_PREFIX) + name).c_str(), def);
