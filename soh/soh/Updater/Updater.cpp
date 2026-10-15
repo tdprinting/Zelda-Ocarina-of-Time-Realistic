@@ -125,8 +125,8 @@ static bool HttpGet(const std::string& url, std::string* outBody, const std::fil
 
     DWORD contentLength = 0;
     size = sizeof(contentLength);
-    WinHttpQueryHeaders(request, WINHTTP_QUERY_CONTENT_LENGTH | WINHTTP_QUERY_FLAG_NUMBER,
-                        WINHTTP_HEADER_NAME_BY_INDEX, &contentLength, &size, WINHTTP_NO_HEADER_INDEX);
+    WinHttpQueryHeaders(request, WINHTTP_QUERY_CONTENT_LENGTH | WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_HEADER_NAME_BY_INDEX,
+                        &contentLength, &size, WINHTTP_NO_HEADER_INDEX);
 
     std::ofstream file;
     if (outFile != nullptr) {
@@ -196,8 +196,7 @@ void CheckForUpdate() {
     std::thread([]() {
         std::string body;
         std::string error;
-        if (!HttpGet("https://api.github.com/repos/" UPDATER_REPO "/releases/latest", &body, nullptr, nullptr,
-                     error)) {
+        if (!HttpGet("https://api.github.com/repos/" UPDATER_REPO "/releases/latest", &body, nullptr, nullptr, error)) {
             SetStatus(State::Error, error);
             sBusy = false;
             return;
@@ -216,9 +215,7 @@ void CheckForUpdate() {
         size_t dash = tag.find_last_of('-');
         try {
             latest = (uint32_t)std::stoul(dash == std::string::npos ? tag : tag.substr(dash + 1));
-        } catch (...) {
-            latest = 0;
-        }
+        } catch (...) { latest = 0; }
 
         std::string url;
         if (json.contains("assets") && json["assets"].is_array()) {
@@ -314,8 +311,7 @@ void InstallAndRestart() {
     STARTUPINFOW si = {};
     si.cb = sizeof(si);
     PROCESS_INFORMATION pi = {};
-    if (!CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si,
-                        &pi)) {
+    if (!CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
         SetStatus(State::Error, "Could not start the installer (error " + std::to_string(GetLastError()) + ")");
         return;
     }

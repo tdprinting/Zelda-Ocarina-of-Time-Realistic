@@ -308,16 +308,17 @@ void SohMenu::AddMenuSettings() {
                 ImGui::ProgressBar(status.progress, ImVec2(-1.0f, 0.0f));
             }
 
-            bool working =
-                status.state == Updater::State::Checking || status.state == Updater::State::Downloading;
+            bool working = status.state == Updater::State::Checking || status.state == Updater::State::Downloading;
             if (status.state == Updater::State::UpdateAvailable) {
                 if (UIWidgets::Button("Download Update", ButtonOptions().Color(THEME_COLOR))) {
                     Updater::DownloadUpdate();
                 }
             } else if (status.state == Updater::State::ReadyToInstall) {
-                if (UIWidgets::Button("Install and Restart",
-                                      ButtonOptions().Color(THEME_COLOR).Tooltip(
-                                          "Closes the game, installs the new build and starts it again. Save first."))) {
+                if (UIWidgets::Button(
+                        "Install and Restart",
+                        ButtonOptions()
+                            .Color(THEME_COLOR)
+                            .Tooltip("Closes the game, installs the new build and starts it again. Save first."))) {
                     Updater::InstallAndRestart();
                 }
             } else {
