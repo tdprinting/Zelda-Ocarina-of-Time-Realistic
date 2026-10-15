@@ -228,6 +228,11 @@ set(ALL_FILES
 ################################################################################
 add_executable(${PROJECT_NAME} ${ALL_FILES})
 
+# CI passes its run number so the in-game updater can compare against GitHub releases (tagged build-<n>).
+# Set on the one file that reads it so changing it doesn't rebuild everything.
+set(ZOOT_BUILD_NUMBER 0 CACHE STRING "Build number compared with GitHub releases by the in-game updater")
+set_source_files_properties(soh/Updater/Updater.cpp PROPERTIES COMPILE_DEFINITIONS "ZOOT_BUILD_NUMBER=${ZOOT_BUILD_NUMBER}")
+
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
 use_props(${PROJECT_NAME} "${CMAKE_CONFIGURATION_TYPES}" "${DEFAULT_CXX_PROPS}")
 endif()

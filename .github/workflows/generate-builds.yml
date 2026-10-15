@@ -243,7 +243,7 @@ jobs:
         VCPKG_ROOT: ${{github.workspace}}/vcpkg
       run: |
         set $env:PATH="$env:USERPROFILE/.cargo/bin;$env:PATH"
-        cmake -S . -B build-windows -G Ninja -DCMAKE_MAKE_PROGRAM=ninja -DCMAKE_BUILD_TYPE:STRING=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DBUILD_REMOTE_CONTROL=1
+        cmake -S . -B build-windows -G Ninja -DCMAKE_MAKE_PROGRAM=ninja -DCMAKE_BUILD_TYPE:STRING=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DBUILD_REMOTE_CONTROL=1 -DZOOT_BUILD_NUMBER=${{ github.run_number }}
         cmake --build build-windows --config Release --parallel 10
 
         (cd build-windows && cpack)
@@ -266,6 +266,7 @@ jobs:
       run: |
         cat > soh-windows/TEST-BUILD.txt <<NOTES
         Zelda Ocarina of Time Realistic - Windows test build
+        Build: ${{ github.run_number }}
         Commit: ${{ github.sha }}
         Branch: ${{ github.head_ref || github.ref_name }}
 
