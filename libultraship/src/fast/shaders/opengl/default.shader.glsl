@@ -479,7 +479,9 @@
                 // Keep the vanilla eyeliner round the rim of the eye
                 float vanillaLine = (1.0 - smoothstep(0.08, 0.2, dot(texVal0.rgb, vec3(0.3, 0.59, 0.11)))) * smoothstep(0.7, 0.95, eyeRho);
                 eyeCol = mix(eyeCol, texVal0.rgb, vanillaLine * (1.0 - eyeLidCover));
-                float eyeMaskV = eyeMap.r;
+                // A closing lid also covers the vanilla eyeliner round the rim and the eye's pointed corners, just
+                // outside the mask
+                float eyeMaskV = max(eyeMap.r, eyeLidCover * (1.0 - smoothstep(0.9, 1.0, length(eyeQ / vec2(1.35, 1.15)))));
                 texVal0.rgb = mix(texVal0.rgb, eyeCol, eyeMaskV);
                 eyeLidCover *= eyeMaskV;
             }
