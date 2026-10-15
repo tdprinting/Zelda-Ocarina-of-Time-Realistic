@@ -2,6 +2,12 @@ name: generate-builds
 on:
   push:
   pull_request:
+  workflow_dispatch:
+    inputs:
+      all_platforms:
+        description: 'Also build macOS and Linux (Windows always builds)'
+        type: boolean
+        default: false
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -43,8 +49,10 @@ jobs:
         path: soh.o2r
         retention-days: 3
 
+  # macOS and Linux only build on a manual run with all_platforms checked, to save CI minutes.
   build-macos:
     needs: generate-soh-otr
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.all_platforms }}
     runs-on: macos-14
     steps:
     - name: Git Checkout
@@ -88,6 +96,7 @@ jobs:
 
   build-linux:
     needs: generate-soh-otr
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.all_platforms }}
     strategy:
       fail-fast: false
       matrix:
@@ -242,11 +251,34 @@ jobs:
         mv _packages/*.zip _packages/soh-windows.zip
     - name: Unzip package
       run: Expand-Archive -Path _packages/soh-windows.zip -DestinationPath soh-windows
+    - name: Check package has no game data
+      shell: bash
+      run: |
+        # soh.o2r holds the port's own assets; anything else of these types would be ROM-derived.
+        bad=$(find soh-windows -type f \( -iname '*.o2r' -o -iname '*.otr' -o -iname '*.z64' -o -iname '*.n64' -o -iname '*.v64' \) ! -iname 'soh.o2r')
+        if [ -n "$bad" ]; then
+          echo "::error::Package contains game data that must not be shipped:"
+          echo "$bad"
+          exit 1
+        fi
+    - name: Add test build notes
+      shell: bash
+      run: |
+        cat > soh-windows/TEST-BUILD.txt <<NOTES
+        Zelda Ocarina of Time Realistic - Windows test build
+        Commit: ${{ github.sha }}
+        Branch: ${{ github.head_ref || github.ref_name }}
+
+        This build contains no game data. On first launch it asks for your own
+        Ocarina of Time ROM and creates oot.o2r from it, or you can copy an
+        existing oot.o2r into this folder next to soh.exe.
+        NOTES
     - name: Upload build
       uses: actions/upload-artifact@v7
       with:
-        name: soh-windows
+        name: zoot-realistic-windows-x64-build${{ github.run_number }}
         path: soh-windows
+        retention-days: 30
     - name: Save Cache VCPKG folder
       if: ${{ github.ref_name == github.event.repository.default_branch }}
       uses: actions/cache/save@v5
