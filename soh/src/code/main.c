@@ -55,6 +55,9 @@ int SDL_main(int argc, char* argv[]) {
     // Allow non-ascii characters for Windows
     setlocale(LC_ALL, ".UTF8");
 
+#elif defined(__ANDROID__)
+// SDLActivity looks this symbol up in libsoh.so once the launcher has the game files in place
+__attribute__((visibility("default"))) int SDL_main(int argc, char* argv[]) {
 #else //_WIN32
 int main(int argc, char* argv[]) {
 #endif

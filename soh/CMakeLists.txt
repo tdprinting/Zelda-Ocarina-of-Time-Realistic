@@ -167,7 +167,11 @@ endif()
 # soh/Extractor {{{
 list(FILTER ship__ EXCLUDE REGEX "soh/Extractor/*")
 
-if(NOT CMAKE_SYSTEM_NAME MATCHES "NintendoSwitch|CafeOS")
+# Android has no in-game extractor: the player picks an oot.o2r they made on a PC in the launcher
+if(CMAKE_SYSTEM_NAME STREQUAL "Android")
+    list(FILTER soh__ EXCLUDE REGEX "soh/Extractor/")
+endif()
+if(NOT CMAKE_SYSTEM_NAME MATCHES "NintendoSwitch|CafeOS|Android")
     file(GLOB_RECURSE soh__Extractor CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
         "soh/Extractor/*.c"
         "soh/Extractor/*.cpp"
@@ -226,7 +230,12 @@ set(ALL_FILES
 ################################################################################
 # Target
 ################################################################################
-add_executable(${PROJECT_NAME} ${ALL_FILES})
+if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+    # SDLActivity loads the game as a shared library and calls its SDL_main
+    add_library(${PROJECT_NAME} SHARED ${ALL_FILES})
+else()
+    add_executable(${PROJECT_NAME} ${ALL_FILES})
+endif()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
 use_props(${PROJECT_NAME} "${CMAKE_CONFIGURATION_TYPES}" "${DEFAULT_CXX_PROPS}")
@@ -616,8 +625,10 @@ add_custom_command(
 ################################################################################
 add_dependencies(${PROJECT_NAME}
     libultraship
-    torch
 )
+if (NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
+    add_dependencies(${PROJECT_NAME} torch)
+endif()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
     find_package(glfw3 REQUIRED)
@@ -674,6 +685,24 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
         -lglad
         Threads::Threads
     )
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Android")
+    include(${CMAKE_SOURCE_DIR}/Android/cmake/dependencies.cmake)
+    set(ADDITIONAL_LIBRARY_DEPENDENCIES
+        "libultraship;"
+        SDL2::SDL2
+        Ogg::ogg
+        vorbis
+        vorbisfile
+        Opus::opus
+        OpusFile::opusfile
+        SDL2_net::SDL2_net-static
+        android
+        log
+        m
+    )
+    # The decomp passes integer addresses to memcpy, which C only warns about, but bionic's
+    # FORTIFY memcpy is an overloaded function and rejects them outright
+    target_compile_options(${PROJECT_NAME} PRIVATE $<$<COMPILE_LANGUAGE:C>:-U_FORTIFY_SOURCE>)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "CafeOS")
     find_package(SDL2 REQUIRED)
     set(ADDITIONAL_LIBRARY_DEPENDENCIES
