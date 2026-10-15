@@ -22,6 +22,12 @@
       "entrance": 238,
       "age": "child",
       "dayTime": 32768
+    },
+    {
+      "name": "kokiri-shop",
+      "entrance": 193,
+      "age": "child",
+      "dayTime": 32768
     }
   ],
   "variants": [
