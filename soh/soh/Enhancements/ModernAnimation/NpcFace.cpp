@@ -406,7 +406,8 @@ void UpdateFace(PlayState* play, Actor* actor, SkelAnime* skel) {
     p.lookTarget[0] = face.lookTarget.x;
     p.lookTarget[1] = face.lookTarget.y;
     p.lookTarget[2] = face.lookTarget.z;
-    p.lookWeight = face.hasLookTarget ? face.lookWeight : 0.0f;
+    // Eyes lead the head only partly: full weight sends the iris to the corner of the eye
+    p.lookWeight = face.hasLookTarget ? face.lookWeight * 0.6f : 0.0f;
     p.saccade[0] = face.saccade[0];
     p.saccade[1] = face.saccade[1];
     p.upperLid = std::clamp(face.shown.upperLid + (1.0f - face.shown.upperLid) * blink, 0.0f, 1.0f);
