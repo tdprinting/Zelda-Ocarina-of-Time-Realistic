@@ -1,5 +1,7 @@
 #define NOMINMAX
 
+#include <algorithm>
+#include <cmath>
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -688,7 +690,7 @@ void Interpreter::ImportTextureRgba16(int tile, bool importReplacement) {
         }
     }
 
-    mRapi->UploadTexture(mTexUploadBuffer, width, height);
+    UploadTextureData(mTexUploadBuffer, width, height);
 }
 
 void Interpreter::ImportTextureRgba32(int tile, bool importReplacement) {
@@ -755,7 +757,7 @@ void Interpreter::ImportTextureRgba32(int tile, bool importReplacement) {
             i++;
         }
     }
-    mRapi->UploadTexture(mTexUploadBuffer, width, height);
+    UploadTextureData(mTexUploadBuffer, width, height);
 }
 
 void Interpreter::ImportTextureIA4(int tile, bool importReplacement) {
@@ -800,7 +802,7 @@ void Interpreter::ImportTextureIA4(int tile, bool importReplacement) {
         }
     }
 
-    mRapi->UploadTexture(mTexUploadBuffer, width, height);
+    UploadTextureData(mTexUploadBuffer, width, height);
 }
 
 void Interpreter::ImportTextureIA8(int tile, bool importReplacement) {
@@ -842,7 +844,7 @@ void Interpreter::ImportTextureIA8(int tile, bool importReplacement) {
         }
     }
 
-    mRapi->UploadTexture(mTexUploadBuffer, width, height);
+    UploadTextureData(mTexUploadBuffer, width, height);
 }
 
 void Interpreter::ImportTextureIA16(int tile, bool importReplacement) {
@@ -892,7 +894,7 @@ void Interpreter::ImportTextureIA16(int tile, bool importReplacement) {
         }
     }
 
-    mRapi->UploadTexture(mTexUploadBuffer, width, height);
+    UploadTextureData(mTexUploadBuffer, width, height);
 }
 
 void Interpreter::ImportTextureI4(int tile, bool importReplacement) {
@@ -944,7 +946,7 @@ void Interpreter::ImportTextureI4(int tile, bool importReplacement) {
         }
     }
 
-    mRapi->UploadTexture(mTexUploadBuffer, width, height);
+    UploadTextureData(mTexUploadBuffer, width, height);
 }
 
 void Interpreter::ImportTextureI8(int tile, bool importReplacement) {
@@ -984,7 +986,7 @@ void Interpreter::ImportTextureI8(int tile, bool importReplacement) {
         }
     }
 
-    mRapi->UploadTexture(mTexUploadBuffer, width, height);
+    UploadTextureData(mTexUploadBuffer, width, height);
 }
 
 void Interpreter::ImportTextureCi4(int tile, bool importReplacement) {
@@ -1073,7 +1075,7 @@ void Interpreter::ImportTextureCi4(int tile, bool importReplacement) {
         }
     }
 
-    mRapi->UploadTexture(mTexUploadBuffer, width, height);
+    UploadTextureData(mTexUploadBuffer, width, height);
 }
 
 void Interpreter::ImportTextureCi8(int tile, bool importReplacement) {
@@ -1150,7 +1152,7 @@ void Interpreter::ImportTextureCi8(int tile, bool importReplacement) {
         height = tile_h;
     }
 
-    mRapi->UploadTexture(mTexUploadBuffer, width, height);
+    UploadTextureData(mTexUploadBuffer, width, height);
 }
 
 void Interpreter::ImportTextureImg(int tile, bool importReplacement) {
@@ -1167,7 +1169,7 @@ void Interpreter::ImportTextureImg(int tile, bool importReplacement) {
 
     uint16_t width = metadata->width;
     uint16_t height = metadata->height;
-    mRapi->UploadTexture(addr, width, height);
+    UploadTextureData(addr, width, height);
 }
 
 void Interpreter::ImportTextureRaw(int tile, bool importReplacement) {
@@ -1214,7 +1216,7 @@ void Interpreter::ImportTextureRaw(int tile, bool importReplacement) {
 
     if (resultNewLineSize == 4 * width && resultNewHeight == height) {
         // Can use the texture directly since it has the correct dimensions
-        mRapi->UploadTexture(addr, width, height);
+        UploadTextureData(addr, width, height);
         return;
     }
 
@@ -1262,10 +1264,35 @@ void Interpreter::ImportTextureRaw(int tile, bool importReplacement) {
             uploadHeight = resultNewHeight;
         }
     }
-    mRapi->UploadTexture(mTexUploadBuffer, uploadWidth, uploadHeight);
+    UploadTextureData(mTexUploadBuffer, uploadWidth, uploadHeight);
+}
+
+void Interpreter::UploadTextureData(const uint8_t* rgba32Buf, uint32_t width, uint32_t height) {
+    mLastUploadData = rgba32Buf;
+    mLastUploadWidth = width;
+    mLastUploadHeight = height;
+    mRapi->UploadTexture(rgba32Buf, width, height);
 }
 
 void Interpreter::ImportTexture(int i, int tile, bool importReplacement) {
+    mLastUploadData = nullptr;
+    ImportTextureData(i, tile, importReplacement);
+    if (mLastUploadData == nullptr || !mModernMaterialsEnabled || mMaterialDefs.empty()) {
+        return;
+    }
+    const auto& resource = mRdp->loaded_texture[mRdp->texture_tile[tile].tmem_index].raw_tex_metadata.resource;
+    if (resource == nullptr || resource->GetInitData() == nullptr) {
+        return;
+    }
+    const std::string& path = resource->GetInitData()->Path;
+    auto def = mMaterialDefs.find(path);
+    if (def != mMaterialDefs.end() && def->second.eye && def->second.eyeMaskAuto && def->second.skinMask.empty() &&
+        mAutoEyeMasks.find(path) == mAutoEyeMasks.end()) {
+        BuildAutoEyeMask(path);
+    }
+}
+
+void Interpreter::ImportTextureData(int i, int tile, bool importReplacement) {
     uint8_t fmt = mRdp->texture_tile[tile].fmt;
     uint8_t siz = mRdp->texture_tile[tile].siz;
     uint32_t texFlags = mRdp->loaded_texture[mRdp->texture_tile[tile].tmem_index].tex_flags;
@@ -1466,7 +1493,7 @@ void Interpreter::ImportTextureMask(int i, int tile) {
         }
     }
 
-    mRapi->UploadTexture(mTexUploadBuffer, width, height);
+    UploadTextureData(mTexUploadBuffer, width, height);
 }
 
 void Interpreter::NormalizeVector(float v[3]) {
@@ -1683,6 +1710,8 @@ void Interpreter::LoadMaterialManifests() {
     if (files == nullptr) {
         return;
     }
+    // Name order, so a later manifest's entry for the same texture replaces an earlier one
+    std::sort(files->begin(), files->end());
     for (const auto& path : *files) {
         auto file = archives->LoadFile(path);
         if (file == nullptr || file->Buffer == nullptr) {
@@ -1696,6 +1725,8 @@ void Interpreter::LoadMaterialManifests() {
                 def.roughnessMetal = entry.value("roughnessMetal", "");
                 def.skinMask = entry.value("skinMask", "");
                 def.eye = entry.value("shading", "standard") == "eye";
+                // Eyes: "eyeMask": "auto" finds the eye inside a texture that also paints the skin around it
+                def.eyeMaskAuto = entry.value("eyeMask", "") == "auto";
                 // With a roughness-metal map these scale it; without one they are the values themselves
                 const bool hasMap = !def.roughnessMetal.empty();
                 def.roughness = entry.value("roughness", hasMap ? 1.0f : 0.5f);
@@ -1791,6 +1822,236 @@ void Interpreter::ProcessMaterialMapRefreshes() {
     }
 }
 
+// Vanilla eye textures paint the eye together with the skin, lashes and often the brows around it. Find the
+// eyes in the decoded texels so only they get a cornea:
+// - the skin is the texture's most common color;
+// - each eye starts from its whites (bright, unsaturated, unlike the skin), or from its pupil when the eye has
+//   no white or the skin itself is pale;
+// - whites on one row with only iris-like texels between them are one eye (the iris splits the white), while
+//   skin between them (the nose) means two eyes;
+// - the eye then grows from the whites into texels whose hue differs from the skin's (the iris) and, inside the
+//   whites' box, into the pupil, staying out of same-hued brows and shading.
+// The mask holds R: eye, G/B: the texel's offset from its eye's centre over the eye's half size (0.5 = centre),
+// which the shader turns into a rounded cornea.
+void Interpreter::BuildAutoEyeMask(const std::string& texturePath) {
+    const uint32_t w = mLastUploadWidth, h = mLastUploadHeight;
+    const uint8_t* px = mLastUploadData;
+    std::vector<uint8_t> mask(w * h * 4, 0);
+    for (uint32_t i = 0; i < w * h; i++) {
+        mask[i * 4 + 1] = mask[i * 4 + 2] = 128;
+        mask[i * 4 + 3] = 255;
+    }
+    auto bin = [&](uint32_t i) { return (px[i * 4] >> 4) << 8 | (px[i * 4 + 1] >> 4) << 4 | (px[i * 4 + 2] >> 4); };
+    std::unordered_map<uint32_t, uint32_t> counts;
+    for (uint32_t i = 0; i < w * h; i++) {
+        if (px[i * 4 + 3] > 0) {
+            counts[bin(i)]++;
+        }
+    }
+    uint32_t skinBin = 0, skinBinCount = 0;
+    for (const auto& [b, count] : counts) {
+        if (count > skinBinCount) {
+            skinBin = b;
+            skinBinCount = count;
+        }
+    }
+    float skin[3] = { 0, 0, 0 };
+    uint32_t skinTexels = 0;
+    for (uint32_t i = 0; i < w * h; i++) {
+        if (px[i * 4 + 3] > 0 && bin(i) == skinBin) {
+            for (int c = 0; c < 3; c++) {
+                skin[c] += px[i * 4 + c];
+            }
+            skinTexels++;
+        }
+    }
+    for (int c = 0; c < 3; c++) {
+        skin[c] /= std::max(skinTexels, 1u) * 255.0f;
+    }
+    auto rgb = [&](uint32_t i, int c) { return px[i * 4 + c] / 255.0f; };
+    auto lumOf = [](float r, float g, float b) { return r * 0.3f + g * 0.59f + b * 0.11f; };
+    auto whiteOf = [&](float r, float g, float b) {
+        const float hi = std::max({ r, g, b }), lo = std::min({ r, g, b });
+        return lumOf(r, g, b) > 0.55f && hi - lo < 0.2f * hi;
+    };
+    auto lum = [&](uint32_t i) { return lumOf(rgb(i, 0), rgb(i, 1), rgb(i, 2)); };
+    auto isWhite = [&](uint32_t i) { return whiteOf(rgb(i, 0), rgb(i, 1), rgb(i, 2)); };
+    auto skinDistance = [&](uint32_t i) {
+        float d2 = 0;
+        for (int c = 0; c < 3; c++) {
+            d2 += (rgb(i, c) - skin[c]) * (rgb(i, c) - skin[c]);
+        }
+        return std::sqrt(d2);
+    };
+    // Hue as the color's offset from its own grey
+    const float skinMean = (skin[0] + skin[1] + skin[2]) / 3.0f;
+    const float skinChroma[3] = { skin[0] - skinMean, skin[1] - skinMean, skin[2] - skinMean };
+    const float skinChromaLen =
+        std::sqrt(skinChroma[0] * skinChroma[0] + skinChroma[1] * skinChroma[1] + skinChroma[2] * skinChroma[2]);
+    auto hueDiffers = [&](uint32_t i) {
+        const float mean = (rgb(i, 0) + rgb(i, 1) + rgb(i, 2)) / 3.0f;
+        float len2 = 0, dot = 0;
+        for (int c = 0; c < 3; c++) {
+            const float chroma = rgb(i, c) - mean;
+            len2 += chroma * chroma;
+            dot += chroma * skinChroma[c];
+        }
+        return skinChromaLen > 0.05f && len2 >= 0.06f * 0.06f && dot < 0.7f * std::sqrt(len2) * skinChromaLen;
+    };
+    auto opaque = [&](uint32_t i) { return px[i * 4 + 3] > 0; };
+    auto neighbours = [&](uint32_t i, uint32_t out[4]) {
+        const uint32_t x = i % w, y = i / w;
+        out[0] = x > 0 ? i - 1 : i;
+        out[1] = x + 1 < w ? i + 1 : i;
+        out[2] = y > 0 ? i - w : i;
+        out[3] = y + 1 < h ? i + w : i;
+    };
+
+    const bool paleSkin = whiteOf(skin[0], skin[1], skin[2]);
+    for (int pass = paleSkin ? 1 : 0; pass < 2; pass++) {
+        // Pass 0 starts from the whites, pass 1 from the pupils
+        auto seed = [&](uint32_t i) {
+            return opaque(i) &&
+                   (pass == 0 ? isWhite(i) && skinDistance(i) > 0.12f : lum(i) < 0.2f && skinDistance(i) > 0.3f);
+        };
+        std::vector<int32_t> region(w * h, -1);
+        std::vector<int32_t> parent;
+        std::vector<uint32_t> stack;
+        uint32_t next[4];
+        for (uint32_t start = 0; start < w * h; start++) {
+            if (region[start] >= 0 || !seed(start)) {
+                continue;
+            }
+            const int32_t id = (int32_t)parent.size();
+            parent.push_back(id);
+            region[start] = id;
+            stack.push_back(start);
+            while (!stack.empty()) {
+                const uint32_t i = stack.back();
+                stack.pop_back();
+                neighbours(i, next);
+                for (uint32_t n : next) {
+                    if (region[n] < 0 && seed(n)) {
+                        region[n] = id;
+                        stack.push_back(n);
+                    }
+                }
+            }
+        }
+        auto findRoot = [&](int32_t r) {
+            while (parent[r] != r) {
+                r = parent[r] = parent[parent[r]];
+            }
+            return r;
+        };
+        for (uint32_t y = 0; y < h; y++) {
+            int32_t last = -1;
+            bool irisBetween = true;
+            for (uint32_t x = 0; x < w; x++) {
+                const uint32_t i = y * w + x;
+                if (region[i] >= 0) {
+                    if (last >= 0 && irisBetween) {
+                        parent[findRoot(region[i])] = findRoot(last);
+                    }
+                    last = region[i];
+                    irisBetween = true;
+                } else if (!opaque(i) || skinDistance(i) <= 0.3f) {
+                    irisBetween = false;
+                }
+            }
+        }
+        struct Box {
+            uint32_t minX = UINT32_MAX, minY = UINT32_MAX, maxX = 0, maxY = 0, count = 0;
+        };
+        std::unordered_map<int32_t, Box> boxes;
+        for (uint32_t i = 0; i < w * h; i++) {
+            if (region[i] >= 0) {
+                Box& b = boxes[findRoot(region[i])];
+                b.minX = std::min(b.minX, i % w);
+                b.maxX = std::max(b.maxX, i % w);
+                b.minY = std::min(b.minY, i / w);
+                b.maxY = std::max(b.maxY, i / w);
+                b.count++;
+            }
+        }
+        bool found = false;
+        std::vector<uint8_t> eye(w * h);
+        for (const auto& [root, b] : boxes) {
+            const uint32_t bw = b.maxX - b.minX + 1, bh = b.maxY - b.minY + 1;
+            // Pupils are round; long dark strokes are lashes or closed lids
+            if (b.count < 2 || b.count * 4 > w * h || (pass == 1 && (bw > 3 * bh || bh > 3 * bw))) {
+                continue;
+            }
+            found = true;
+            // Grow over the iris, which the lids often let reach above the whites
+            const int32_t x0 = std::max((int32_t)b.minX - 2, 0), x1 = std::min(b.maxX + 2, w - 1);
+            const int32_t y0 = std::max((int32_t)(b.minY - 0.75f * bh), 0), y1 = std::min(b.maxY + 1, h - 1);
+            auto grows = [&](uint32_t i) {
+                const int32_t x = i % w, y = i / w;
+                if (x < x0 || x > x1 || y < y0 || y > y1 || !opaque(i)) {
+                    return false;
+                }
+                if (isWhite(i)) {
+                    return true;
+                }
+                if (lum(i) < 0.15f) {
+                    return x >= (int32_t)b.minX && x <= (int32_t)b.maxX && y >= (int32_t)b.minY && y <= (int32_t)b.maxY;
+                }
+                return hueDiffers(i);
+            };
+            std::fill(eye.begin(), eye.end(), 0);
+            for (uint32_t i = 0; i < w * h; i++) {
+                if (region[i] >= 0 && findRoot(region[i]) == root) {
+                    eye[i] = 1;
+                    stack.push_back(i);
+                }
+            }
+            while (!stack.empty()) {
+                const uint32_t i = stack.back();
+                stack.pop_back();
+                neighbours(i, next);
+                for (uint32_t n : next) {
+                    if (!eye[n] && grows(n)) {
+                        eye[n] = 1;
+                        stack.push_back(n);
+                    }
+                }
+            }
+            float minX = (float)w, minY = (float)h, maxX = 0, maxY = 0;
+            for (uint32_t i = 0; i < w * h; i++) {
+                if (eye[i]) {
+                    minX = std::min(minX, (float)(i % w));
+                    maxX = std::max(maxX, (float)(i % w) + 1);
+                    minY = std::min(minY, (float)(i / w));
+                    maxY = std::max(maxY, (float)(i / w) + 1);
+                }
+            }
+            const float cx = (minX + maxX) * 0.5f, cy = (minY + maxY) * 0.5f;
+            const float rx = std::max((maxX - minX) * 0.5f, 1.0f), ry = std::max((maxY - minY) * 0.5f, 1.0f);
+            for (uint32_t i = 0; i < w * h; i++) {
+                if (eye[i]) {
+                    const float ox = ((i % w) + 0.5f - cx) / rx, oy = ((i / w) + 0.5f - cy) / ry;
+                    mask[i * 4] = 255;
+                    mask[i * 4 + 1] = (uint8_t)std::clamp(128.0f + ox * 127.0f, 0.0f, 255.0f);
+                    mask[i * 4 + 2] = (uint8_t)std::clamp(128.0f + oy * 127.0f, 0.0f, 255.0f);
+                }
+            }
+        }
+        if (found) {
+            break;
+        }
+    }
+    const uint32_t id = mRapi->CreateMaterialTexture(mask.data(), w, h);
+    mAutoEyeMasks[texturePath] = id;
+    auto loaded = mLoadedMaterials.find(texturePath);
+    if (loaded != mLoadedMaterials.end()) {
+        loaded->second->state.skinTex = id;
+        if (mBoundMaterial == loaded->second.get()) {
+            mRapi->SetMaterialState(loaded->second->state);
+        }
+    }
+}
+
 const Interpreter::LoadedMaterial* Interpreter::ResolveMaterial(Fast::Texture* resource) {
     if (resource == mMaterialLastResource) {
         return mMaterialLastResult;
@@ -1825,6 +2086,12 @@ const Interpreter::LoadedMaterial* Interpreter::FindMaterial(Fast::Texture* reso
     material->state.params[1] = def->second.metalness;
     material->state.params[2] = def->second.normalStrength;
     material->state.params[3] = def->second.skinMask.empty() ? 0.0f : def->second.skin;
+    if (def->second.eye && def->second.skinMask.empty() && def->second.eyeMaskAuto) {
+        // The mask is built when the texture is first decoded; until then the eye has no cornea
+        auto mask = mAutoEyeMasks.find(path);
+        material->state.skinTex = mask != mAutoEyeMasks.end() ? mask->second : 0;
+        material->state.params[3] = -1.0f;
+    }
     return (mLoadedMaterials[path] = std::move(material)).get();
 }
 

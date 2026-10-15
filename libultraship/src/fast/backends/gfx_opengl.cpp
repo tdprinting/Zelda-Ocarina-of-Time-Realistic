@@ -57,6 +57,10 @@ static void VertexArraySetAttribs(ShaderProgram* prg) {
     }
 }
 
+#ifdef USE_OPENGLES
+#define GL_MIRROR_CLAMP_TO_EDGE 0x8743
+#endif
+
 void GfxRenderingAPIOGL::SetUniforms(ShaderProgram* prg) const {
     glUniform1i(prg->frameCountLocation, mFrameCount);
     glUniform1f(prg->noiseScaleLocation, mCurrentNoiseScale);
@@ -79,14 +83,22 @@ void GfxRenderingAPIOGL::SetPerDrawUniforms() {
     if (mCurrentShaderProgram->material) {
         // Material maps live on units after the combiner (0-5) and ambient occlusion (6-7) units
         const GLuint ids[3] = { mMaterialState.normalTex, mMaterialState.roughnessMetalTex, mMaterialState.skinTex };
+        const TextureInfo& base = textures[mCurrentTextureIds[0]];
         for (int k = 0; k < 3; k++) {
             glActiveTexture(GL_TEXTURE0 + MATERIAL_TEXTURE_UNIT + k);
             glBindTexture(GL_TEXTURE_2D, ids[k] != 0 ? ids[k] : mMaterialDefaultTex[k]);
+            if (ids[k] != 0) {
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, base.wrapS);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, base.wrapT);
+            }
         }
         if (mLastActiveTexture >= 0) {
             glActiveTexture(GL_TEXTURE0 + mLastActiveTexture);
         }
         glUniform4fv(mCurrentShaderProgram->materialParamsLocation, 1, mMaterialState.params);
+        const bool mirrorS = base.wrapS == GL_MIRRORED_REPEAT || base.wrapS == GL_MIRROR_CLAMP_TO_EDGE;
+        const bool mirrorT = base.wrapT == GL_MIRRORED_REPEAT || base.wrapT == GL_MIRROR_CLAMP_TO_EDGE;
+        glUniform2f(mCurrentShaderProgram->materialMirrorLocation, mirrorS ? 1.0f : 0.0f, mirrorT ? 1.0f : 0.0f);
     }
 
     if (mCurrentShaderProgram->usedTextures[0] || mCurrentShaderProgram->usedTextures[1]) {
@@ -566,6 +578,7 @@ ShaderProgram* GfxRenderingAPIOGL::CreateAndLoadNewShader(uint64_t shader_id0, u
     prg->lightParamsLocation = glGetUniformLocation(shader_program, "uLightParams");
     prg->material = cc_features.opt_modern_lighting && cc_features.opt_material && cc_features.usedTextures[0];
     prg->materialParamsLocation = glGetUniformLocation(shader_program, "uMatParams");
+    prg->materialMirrorLocation = glGetUniformLocation(shader_program, "uMatMirror");
 
     LoadShader(prg);
 
@@ -646,10 +659,6 @@ void GfxRenderingAPIOGL::UploadTexture(const uint8_t* rgba32_buf, uint32_t width
     textures[mCurrentTextureIds[mCurrentTile]].height = height;
 }
 
-#ifdef USE_OPENGLES
-#define GL_MIRROR_CLAMP_TO_EDGE 0x8743
-#endif
-
 static uint32_t gfx_cm_to_opengl(uint32_t val) {
     switch (val) {
         case G_TX_NOMIRROR | G_TX_CLAMP:
@@ -673,6 +682,8 @@ void GfxRenderingAPIOGL::SetSamplerParameters(int tile, bool linear_filter, uint
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
     textures[mCurrentTextureIds[tile]].filtering = !linear_filter ? FILTER_LINEAR : FILTER_THREE_POINT;
+    textures[mCurrentTextureIds[tile]].wrapS = gfx_cm_to_opengl(cms);
+    textures[mCurrentTextureIds[tile]].wrapT = gfx_cm_to_opengl(cmt);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, gfx_cm_to_opengl(cms));
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, gfx_cm_to_opengl(cmt));
 }

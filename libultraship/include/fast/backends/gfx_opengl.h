@@ -49,6 +49,7 @@ struct ShaderProgram {
     GLint lightParamsLocation;
     bool material;
     GLint materialParamsLocation;
+    GLint materialMirrorLocation;
 };
 
 struct FramebufferOGL {
@@ -66,6 +67,9 @@ struct TextureInfo {
     uint16_t width;
     uint16_t height;
     uint16_t filtering;
+    // Wrap modes, which material maps copy so they line up with mirrored and clamped base textures
+    GLint wrapS = GL_REPEAT;
+    GLint wrapT = GL_REPEAT;
 };
 
 class GfxRenderingAPIOGL final : public GfxRenderingAPI {

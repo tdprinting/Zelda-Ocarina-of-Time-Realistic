@@ -35,6 +35,7 @@ Put one or more JSON files under `materials/` in the pack's `.o2r`, for example 
 | `roughnessMetal` | glTF metallic-roughness layout: G = roughness, B = metalness. |
 | `skinMask` | R = how much of the surface is skin. Skin lighting wraps past the shadow line with a warm tint. |
 | `shading` | `"standard"` (default) or `"eye"`. |
+| `eyeMask` | Eyes only: `"auto"` finds the eye inside a texture that also paints the skin around it (see below). |
 | `roughness`, `metalness` | Scale the map when there is one. Without a map they are the values themselves (defaults 0.5 and 0). |
 | `normalStrength` | Scales the normal map's tilt (default 1). |
 | `skin` | Scales the skin mask (default 1). |
@@ -51,7 +52,22 @@ derivatives.
 `"shading": "eye"` is meant for separate eyeball meshes. It adds a wet cornea highlight (a very smooth
 clearcoat-like lobe on the eyeball's geometric normal, so it stays sharp over a bumpy iris normal map) and a
 soft catchlight from the camera side, and leaves out the rim light. The normal map, if any, shapes the
-iris and sclera under the cornea. The model animates the eyeballs itself.
+iris and sclera under the cornea. The model animates the eyeballs itself. A `skinMask` on an eye material
+says where the eye is (R = 1 on the eye); without one the whole texture is the eye.
+
+### Vanilla eyes
+
+Vanilla characters paint their eyes on flat face polygons, together with the skin, lashes and often the
+brows. soh.o2r ships `materials/00-vanilla-eyes.json`, which gives every vanilla character eye texture
+(Link, Saria, Malon, Zelda, Kokiri, Zoras, Gorons and the rest, open and half-open frames) `"shading":
+"eye"` with `"eyeMask": "auto"`. When such a texture is first decoded, the renderer finds the eyes in it
+(the whites, the iris next to them, the pupil) and leaves the skin, brows and nose alone. The cornea on
+those texels is rounded around each eye's centre, so the highlight and catchlight land on the eye like on
+a real eyeball and move with the light and camera. The rest of the face keeps its normal lighting.
+
+A mod pack replaces an entry by listing the same texture in its own manifest (HD eye textures with their
+own masks, for example). Manifests are read in name order and a later entry for the same texture wins, so
+give yours a name that sorts after `00-vanilla-eyes.json`.
 
 ## Changing maps at runtime
 

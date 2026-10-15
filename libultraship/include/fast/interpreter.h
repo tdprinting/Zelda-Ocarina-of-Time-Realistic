@@ -458,6 +458,8 @@ class Interpreter {
     void ImportTextureRaw(int tile, bool importReplacement);
     void ImportTextureImg(int tile, bool importReplacement);
     void ImportTexture(int i, int tile, bool importReplacement);
+    void ImportTextureData(int i, int tile, bool importReplacement);
+    void UploadTextureData(const uint8_t* rgba32Buf, uint32_t width, uint32_t height);
     void ImportTextureMask(int i, int tile);
     void CalculateNormalDir(const F3DLight_t*, float coeffs[3]);
     // Opt-in memoization of OTR texture-path resolution, keyed by display-list
@@ -600,6 +602,7 @@ class Interpreter {
     struct MaterialDef {
         std::string normal, roughnessMetal, skinMask;
         bool eye = false;
+        bool eyeMaskAuto = false;
         float roughness = 1.0f, metalness = 1.0f, normalStrength = 1.0f, skin = 1.0f;
     };
     struct LoadedMaterial {
@@ -610,6 +613,7 @@ class Interpreter {
     const LoadedMaterial* ResolveMaterial(Fast::Texture* resource);
     const LoadedMaterial* FindMaterial(Fast::Texture* resource);
     uint32_t LoadMaterialMap(const std::string& path);
+    void BuildAutoEyeMask(const std::string& texturePath);
     bool ReadMaterialMap(const std::string& path, std::vector<uint8_t>& rgba, uint32_t& width, uint32_t& height);
     // Re-uploads a material map (by its path in the manifest) at the start of the next frame, for mods that
     // rewrite a map's pixels at runtime. Safe to call from any thread.
@@ -624,6 +628,11 @@ class Interpreter {
     std::unordered_map<std::string, std::unique_ptr<LoadedMaterial>> mLoadedMaterials;
     Fast::Texture* mMaterialLastResource = nullptr;
     const LoadedMaterial* mMaterialLastResult = nullptr;
+    // "eyeMask": "auto": masks built from each eye texture's decoded texels, by texture path
+    std::unordered_map<std::string, uint32_t> mAutoEyeMasks;
+    const uint8_t* mLastUploadData = nullptr;
+    uint32_t mLastUploadWidth = 0;
+    uint32_t mLastUploadHeight = 0;
     const LoadedMaterial* mCurrentMaterial = nullptr;
     const LoadedMaterial* mBoundMaterial = nullptr;
     float mEyePos[3] = {};
