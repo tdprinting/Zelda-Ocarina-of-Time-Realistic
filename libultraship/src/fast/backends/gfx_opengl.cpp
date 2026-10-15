@@ -333,7 +333,9 @@ std::string GfxRenderingAPIOGL::BuildFsShader(const CCFeatures& cc_features) {
         { "texture", "texture" },
         { "vOutColor", "vOutColor" },
 #elif defined(USE_OPENGLES)
-        { "GLSL_VERSION", "#version 300 es\nprecision mediump float;" },
+        // highp: mediump (fp16 on most mobile GPUs) cannot address texels on tiled ground textures, whose
+        // UVs run into the dozens, and breaks three-point filtering there
+        { "GLSL_VERSION", "#version 300 es\nprecision highp float;" },
         { "attr", "in" },
         { "highp", "highp" },
         { "opengles", true },
