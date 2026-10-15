@@ -266,7 +266,7 @@ nrm = np.where(cloth, soft, nrm)
 
 # ------------------------------------------------------------------------------------------- material maps
 #                     tunic hat  belt buckle boot top  sole skin hair face
-ROUGH = np.array([0.8, 0.86, 0.86, 0.5, 0.3, 0.55, 0.62, 0.7, 0.5, 0.42, 0.5], np.float32)
+ROUGH = np.array([0.8, 0.86, 0.86, 0.5, 0.3, 0.62, 0.68, 0.75, 0.66, 0.5, 0.62], np.float32)
 METAL = np.array([0, 0, 0, 0, 0.95, 0, 0, 0, 0, 0, 0], np.float32)
 # Surface classes for wetness and dirt (SurfaceState): 1 cloth, 3 skin, 4 hair, 5 leather, 6 metal.
 SURF = np.array([0, 1, 1, 5, 6, 5, 5, 5, 3, 4, 3], np.uint8)

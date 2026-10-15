@@ -1047,7 +1047,7 @@ static PostLimbDrawOpa sPlayerModelPost;
 static s32 Player_OverrideLimbDrawPlayerModel(PlayState* play, s32 limbIndex, Gfx** dList, Vec3f* pos, Vec3s* rot,
                                               void* arg) {
     s32 ret = (sPlayerModelOverride != NULL) ? sPlayerModelOverride(play, limbIndex, dList, pos, rot, arg) : false;
-    PlayerModel_OverrideLimb(limbIndex, dList, pos);
+    PlayerModel_OverrideLimb(limbIndex, dList, pos, rot);
     return ret;
 }
 
@@ -1265,6 +1265,14 @@ void func_8008F87C(PlayState* play, Player* this, SkelAnime* skelAnime, Vec3f* p
         Matrix_MultVec3f(&sZeroVec, &sp98);
         Matrix_MultVec3f(&D_80126070, &footprintPos);
         Matrix_Pop();
+
+        {
+            Vec3f legOffset;
+            PlayerModel_LegIkOffset(pos, &legOffset);
+            Math_Vec3f_Sum(&spA4, &legOffset, &spA4);
+            Math_Vec3f_Sum(&sp98, &legOffset, &sp98);
+            Math_Vec3f_Sum(&footprintPos, &legOffset, &footprintPos);
+        }
 
         footprintPos.y += 15.0f;
 

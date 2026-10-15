@@ -38,7 +38,11 @@ s32 PlayerModel_ShouldReplace(void** skeleton);
 
 // Called around SkelAnime_DrawFlexLod in Player_DrawImpl.
 void PlayerModel_Begin(PlayState* play, void* player, s32 eyeIndex, s32 mouthIndex);
-void PlayerModel_OverrideLimb(s32 limbIndex, Gfx** dList, Vec3f* pos);
+void PlayerModel_OverrideLimb(s32 limbIndex, Gfx** dList, Vec3f* pos, Vec3s* rot);
+// The game bends Link's knees when his foot would sink into the floor, working from the original leg. The model's
+// hips sit lower than the original's (shorter legs), which made that check bend the knees on flat ground. This
+// gives the world-space offset from the model's thigh joint to the original's, so the check sees the original leg.
+void PlayerModel_LegIkOffset(Vec3f* thighPos, Vec3f* offset);
 void PlayerModel_PostLimb(s32 limbIndex);
 void PlayerModel_End(PlayState* play);
 

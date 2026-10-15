@@ -37,7 +37,7 @@ for i, n in enumerate(names):
     if n in SCALE:
         s[i] = SCALE[n]
     elif n.startswith('Skirt'):
-        s[i] = SCALE['Waist']
+        s[i] = (SCALE['Waist'][0], 1.0, SCALE['Waist'][2])  # the tunic keeps its length, down to mid-thigh
 
 order = []
 def visit(i):

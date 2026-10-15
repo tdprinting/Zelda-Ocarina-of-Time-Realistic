@@ -43,6 +43,9 @@ static Mat4 sLimbWorld[kNumLimbs];
 static bool sLimbSeen[kNumLimbs];
 static s32 sEyeIndex = 0;
 static s32 sMouthIndex = 0;
+// Where the original skeleton would put the root, waist and lower body this draw (game matrix stack form), so the
+// game's foot placement can work from the original leg (see PlayerModel_LegIkOffset).
+static MtxF sVanillaHips[3];
 
 // Skinned output and the display lists that draw it. Two sets so a frame being drawn is never
 // rewritten while the next frame is built.
@@ -418,13 +421,23 @@ extern "C" void PlayerModel_Begin(PlayState* play, void* player, s32 eyeIndex, s
     sActive = true;
 }
 
-extern "C" void PlayerModel_OverrideLimb(s32 limbIndex, Gfx** dList, Vec3f* pos) {
+extern "C" void PlayerModel_OverrideLimb(s32 limbIndex, Gfx** dList, Vec3f* pos, Vec3s* rot) {
     if (!sActive) {
         return;
     }
     const int limb = limbIndex - 1;
     if (limb < 0 || limb >= kNumLimbs) {
         return;
+    }
+    if (limb < 3) {
+        // Root, waist and lower body as the original skeleton places them, before our joint positions apply.
+        Matrix_Push();
+        if (limb > 0) {
+            Matrix_Put(&sVanillaHips[limb - 1]);
+        }
+        Matrix_TranslateRotateZYX(pos, rot);
+        Matrix_Get(&sVanillaHips[limb]);
+        Matrix_Pop();
     }
     if (limb == 0) {
         pos->y *= sModel.rootYScale;
@@ -446,6 +459,23 @@ extern "C" void PlayerModel_OverrideLimb(s32 limbIndex, Gfx** dList, Vec3f* pos)
             *dList = nullptr;
             break;
     }
+}
+
+extern "C" void PlayerModel_LegIkOffset(Vec3f* thighPos, Vec3f* offset) {
+    *offset = { 0.0f, 0.0f, 0.0f };
+    if (!sActive) {
+        return;
+    }
+    Vec3f ours;
+    Vec3f vanilla;
+    Matrix_MultVec3f(thighPos, &ours);
+    Matrix_Push();
+    Matrix_Put(&sVanillaHips[2]);
+    Matrix_MultVec3f(thighPos, &vanilla);
+    Matrix_Pop();
+    offset->x = vanilla.x - ours.x;
+    offset->y = vanilla.y - ours.y;
+    offset->z = vanilla.z - ours.z;
 }
 
 extern "C" void PlayerModel_PostLimb(s32 limbIndex) {
