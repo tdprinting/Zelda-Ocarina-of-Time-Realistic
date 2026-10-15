@@ -128,7 +128,7 @@ static bool LoadProp(Prop p) {
                                 G_TX_NOMASK, kTexShift, kTexShift);
             mesh.dl.insert(mesh.dl.end(), tmp, t);
         }
-        gSPVertex(&g, &mesh.vtx[c.firstVert], c.numVerts, 0);
+        gSPVertex(&g, (uintptr_t)&mesh.vtx[c.firstVert], c.numVerts, 0);
         push(g);
         const uint8_t* tri = &m.chunkTris[c.firstTri * 3];
         uint32_t t = 0;

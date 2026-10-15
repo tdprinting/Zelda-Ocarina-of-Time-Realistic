@@ -217,7 +217,7 @@ static void BuildDrawList(DrawBuffers& buf) {
     for (const Chunk& c : m.chunks) {
         std::vector<Gfx>& dl = buf.dls[c.material];
         Gfx g;
-        gSPVertex(&g, &buf.vtx[c.firstVert], c.numVerts, 0);
+        gSPVertex(&g, (uintptr_t)&buf.vtx[c.firstVert], c.numVerts, 0);
         dl.push_back(g);
         size_t t = 0;
         for (; t + 1 < c.numTris; t += 2) {
