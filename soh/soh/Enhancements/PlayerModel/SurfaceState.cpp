@@ -343,14 +343,20 @@ static void ApplyDebugOverrides() {
     if (wet == sLastWet && dirt == sLastDirt) {
         return;
     }
+    // Turning an override off (back to -1) leaves the clothes clean and dry.
+    const bool clearWet = wet < 0.0f && sLastWet >= 0.0f;
+    const bool clearDirt = dirt < 0.0f && sLastDirt >= 0.0f;
     sLastWet = wet;
     sLastDirt = dirt;
     const size_t n = sState.wet.size();
     for (size_t i = 0; i < n; i++) {
-        if (wet >= 0.0f) {
-            sState.wet[i] = wet;
+        if (wet >= 0.0f || clearWet) {
+            sState.wet[i] = std::max(wet, 0.0f);
         }
-        if (dirt >= 0.0f) {
+        if (clearDirt) {
+            sState.dirt[i] = 0.0f;
+            sState.grass[i] = 0.0f;
+        } else if (dirt >= 0.0f) {
             const float grab = std::max(0.0f, sState.noise[i] - 0.42f) * 2.4f * kDirtStick[sState.texels[i].cls];
             sState.dirt[i] = std::min(1.0f, dirt * grab * 2.0f);
             sState.grass[i] = 0.0f;

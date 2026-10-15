@@ -196,8 +196,10 @@ bool ParseModel(const char* data, size_t size, Model& out, std::string& error) {
         for (int k = 0; k < 3; k++) {
             v.nrm[k] = n[k] / 127.0f;
         }
-        v.tc[0] = (int16_t)std::lround(std::clamp(uv[0], -1.9f, 1.9f) * kTexCoordScale);
-        v.tc[1] = (int16_t)std::lround(std::clamp(1.0f - uv[1], -1.9f, 1.9f) * kTexCoordScale);
+        // With bilinear filtering the interpreter adds half a texel of the nominal 32x32 tile, which for an HD
+        // atlas is 16 real pixels and lands in a neighbouring UV island; take it back out here.
+        v.tc[0] = (int16_t)std::lround(std::clamp(uv[0], -1.9f, 1.9f) * kTexCoordScale - kTexHalfTexel);
+        v.tc[1] = (int16_t)std::lround(std::clamp(1.0f - uv[1], -1.9f, 1.9f) * kTexCoordScale - kTexHalfTexel);
         for (int k = 0; k < 4; k++) {
             if (v.weight[k] != 0 && v.bone[k] >= numBones) {
                 error = "vertex bone index out of range";

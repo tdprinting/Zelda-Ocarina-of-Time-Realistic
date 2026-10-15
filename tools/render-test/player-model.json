@@ -1,6 +1,6 @@
 {
   "warmupTicks": 100,
-  "settleTicks": 6,
+  "settleTicks": 30,
   "baseline": "vanilla",
   "cvars": {
     "gSettings.ModernRendering.Lighting": 1,
@@ -8,17 +8,101 @@
     "gSettings.PlayerModel.Child": 1
   },
   "scenes": [
-    { "name": "kokiri-forest", "entrance": 238, "age": "child", "dayTime": 32768 },
-    { "name": "links-house", "entrance": 187, "age": "child", "dayTime": 32768 }
+    {
+      "name": "kokiri-forest",
+      "entrance": 238,
+      "age": "child",
+      "dayTime": 32768
+    },
+    {
+      "name": "links-house",
+      "entrance": 187,
+      "age": "child",
+      "dayTime": 32768
+    }
   ],
   "variants": [
-    { "name": "vanilla", "cvars": { "gSettings.PlayerModel.Child": 0, "gSettings.PlayerModel.Debug.Yaw": 180 } },
-    { "name": "back", "cvars": { "gSettings.PlayerModel.Child": 1, "gSettings.PlayerModel.Debug.Yaw": 0 } },
-    { "name": "front", "cvars": { "gSettings.PlayerModel.Debug.Yaw": 180 } },
-    { "name": "side", "cvars": { "gSettings.PlayerModel.Debug.Yaw": 90 } },
-    { "name": "run", "cvars": { "gSettings.PlayerModel.Debug.Yaw": 150, "gSettings.PlayerModel.Debug.Anim": "objects/gameplay_keep/gPlayerAnim_link_normal_run_free", "gSettings.PlayerModel.Debug.Frame": 4 } },
-    { "name": "slash", "cvars": { "gSettings.PlayerModel.Debug.Anim": "objects/gameplay_keep/gPlayerAnim_link_fighter_Lnormal_kiru", "gSettings.PlayerModel.Debug.Frame": 4 } },
-    { "name": "wet", "cvars": { "gSettings.PlayerModel.Debug.Anim": "", "gSettings.PlayerModel.Debug.Yaw": 180, "gSettings.PlayerModel.Debug.Wet": 1.0 } },
-    { "name": "muddy", "cvars": { "gSettings.PlayerModel.Debug.Wet": 0.5, "gSettings.PlayerModel.Debug.Dirt": 1.0 } }
+    {
+      "name": "vanilla",
+      "cvars": {
+        "gSettings.PlayerModel.Child": 0,
+        "gSettings.PlayerModel.Debug.Yaw": 180,
+        "gSettings.PlayerModel.Debug.Wet": -1.0,
+        "gSettings.PlayerModel.Debug.Dirt": -1.0,
+        "gSettings.PlayerModel.Debug.Anim": ""
+      }
+    },
+    {
+      "name": "front",
+      "cvars": {
+        "gSettings.PlayerModel.Child": 1,
+        "gSettings.PlayerModel.Debug.Yaw": 0,
+        "gSettings.PlayerModel.Debug.Wet": -1.0,
+        "gSettings.PlayerModel.Debug.Dirt": -1.0,
+        "gSettings.PlayerModel.Debug.Anim": ""
+      }
+    },
+    {
+      "name": "back",
+      "cvars": {
+        "gSettings.PlayerModel.Debug.Yaw": 180,
+        "gSettings.PlayerModel.Debug.Wet": -1.0,
+        "gSettings.PlayerModel.Debug.Dirt": -1.0,
+        "gSettings.PlayerModel.Debug.Anim": "",
+        "gSettings.PlayerModel.Child": 1
+      }
+    },
+    {
+      "name": "side",
+      "cvars": {
+        "gSettings.PlayerModel.Debug.Yaw": 90,
+        "gSettings.PlayerModel.Debug.Wet": -1.0,
+        "gSettings.PlayerModel.Debug.Dirt": -1.0,
+        "gSettings.PlayerModel.Debug.Anim": "",
+        "gSettings.PlayerModel.Child": 1
+      }
+    },
+    {
+      "name": "run",
+      "cvars": {
+        "gSettings.PlayerModel.Debug.Yaw": 30,
+        "gSettings.PlayerModel.Debug.Anim": "objects/gameplay_keep/gPlayerAnim_link_normal_run_free",
+        "gSettings.PlayerModel.Debug.Frame": 4,
+        "gSettings.PlayerModel.Debug.Wet": -1.0,
+        "gSettings.PlayerModel.Debug.Dirt": -1.0,
+        "gSettings.PlayerModel.Child": 1
+      }
+    },
+    {
+      "name": "slash",
+      "cvars": {
+        "gSettings.PlayerModel.Debug.Anim": "objects/gameplay_keep/gPlayerAnim_link_fighter_Lnormal_kiru",
+        "gSettings.PlayerModel.Debug.Frame": 4,
+        "gSettings.PlayerModel.Debug.Wet": -1.0,
+        "gSettings.PlayerModel.Debug.Dirt": -1.0,
+        "gSettings.PlayerModel.Debug.Yaw": 0,
+        "gSettings.PlayerModel.Child": 1
+      }
+    },
+    {
+      "name": "wet",
+      "cvars": {
+        "gSettings.PlayerModel.Debug.Anim": "",
+        "gSettings.PlayerModel.Debug.Yaw": 0,
+        "gSettings.PlayerModel.Debug.Wet": 1.0,
+        "gSettings.PlayerModel.Debug.Dirt": -1.0,
+        "gSettings.PlayerModel.Child": 1
+      }
+    },
+    {
+      "name": "muddy",
+      "cvars": {
+        "gSettings.PlayerModel.Debug.Wet": 0.5,
+        "gSettings.PlayerModel.Debug.Dirt": 1.0,
+        "gSettings.PlayerModel.Debug.Anim": "",
+        "gSettings.PlayerModel.Debug.Yaw": 0,
+        "gSettings.PlayerModel.Child": 1
+      }
+    }
   ]
 }

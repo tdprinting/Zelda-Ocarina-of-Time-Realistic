@@ -9,6 +9,7 @@
 #include <ship/resource/archive/ArchiveManager.h>
 #include <libultraship/libultraship.h>
 #include <libultraship/bridge/gfxbridge.h>
+#include "soh/frame_interpolation.h"
 
 #include <cmath>
 #include <cstring>
@@ -319,7 +320,11 @@ static void FillVertices(DrawBuffers& buf) {
     }
 }
 
-static void Draw(PlayState* play, DrawBuffers& buf) {
+} // namespace PlayerModel
+
+// OPEN_DISPS declares the frame interpolation hooks at block scope, so it must not sit inside a namespace.
+static void PlayerModel_Draw(PlayState* play, PlayerModel::DrawBuffers& buf) {
+    using namespace PlayerModel;
     OPEN_DISPS(play->state.gfxCtx);
 
     Matrix_Push();
@@ -350,9 +355,11 @@ static void Draw(PlayState* play, DrawBuffers& buf) {
             continue;
         }
         gDPPipeSync(POLY_OPA_DISP++);
+        // No wrap mask: the interpreter trims a texture to its mask period, and for an HD texture that
+        // would be 32 real pixels of the atlas. Clamping trims to the nominal tile the same way.
         gDPLoadTextureBlock(POLY_OPA_DISP++, sMaterialTextures[i].c_str(), G_IM_FMT_RGBA, G_IM_SIZ_32b,
-                            kNominalTexSize, kNominalTexSize, 0, G_TX_WRAP | G_TX_NOMIRROR, G_TX_WRAP | G_TX_NOMIRROR, 5,
-                            5, kTexShift, kTexShift);
+                            kNominalTexSize, kNominalTexSize, 0, G_TX_WRAP | G_TX_NOMIRROR, G_TX_WRAP | G_TX_NOMIRROR,
+                            G_TX_NOMASK, G_TX_NOMASK, kTexShift, kTexShift);
         gSPDisplayList(POLY_OPA_DISP++, buf.dls[i].data());
     }
     gDPPipeSync(POLY_OPA_DISP++);
@@ -360,7 +367,7 @@ static void Draw(PlayState* play, DrawBuffers& buf) {
     CLOSE_DISPS(play->state.gfxCtx);
 }
 
-} // namespace PlayerModel
+
 
 using namespace PlayerModel;
 
@@ -482,6 +489,10 @@ extern "C" void PlayerModel_End(PlayState* play) {
     for (int i = 0; i < kNumLimbs; i++) {
         pose[i] = Mul(invBase, sLimbWorld[i]);
     }
+    // The vanilla hat limb flops the low-poly hat about in some animations (sword swings, rolls). Here it carries
+    // the crown, which would shear away from the head, so it stays put on the head and the cloth chain hanging
+    // from it does the swinging.
+    pose[kLimbHat] = Mul(pose[kLimbHead], Mul(sModel.bones[kLimbHead].invBind, sModel.bones[kLimbHat].bind));
     // Extra bones follow their parent rigidly, then cloth and face move them.
     for (size_t i = kNumLimbs; i < numBones; i++) {
         const Bone& b = sModel.bones[i];
@@ -517,7 +528,7 @@ extern "C" void PlayerModel_End(PlayState* play) {
         BuildDrawList(buf);
     }
     FillVertices(buf);
-    Draw(play, buf);
+    PlayerModel_Draw(play, buf);
 }
 
 extern "C" void PlayerModel_RefreshMaterialMap(const char* path) {

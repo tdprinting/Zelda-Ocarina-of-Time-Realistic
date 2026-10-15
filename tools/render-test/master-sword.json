@@ -1,0 +1,68 @@
+{
+  "warmupTicks": 160,
+  "settleTicks": 8,
+  "baseline": "vanilla",
+  "cvars": {
+    "gSettings.ModernRendering.Lighting": 1,
+    "gSettings.ModernRendering.Materials": 1,
+    "gSettings.PlayerModel.MasterSword": 1
+  },
+  "scenes": [
+    {
+      "name": "kakariko",
+      "entrance": 219,
+      "age": "adult",
+      "dayTime": 32768,
+      "pos": [
+        855.238,
+        80.0,
+        -234.095
+      ],
+      "yaw": 0
+    }
+  ],
+  "variants": [
+    {
+      "name": "vanilla",
+      "cvars": {
+        "gSettings.PlayerModel.MasterSword": 0,
+        "gSettings.PlayerModel.Debug.Yaw": 0,
+        "gSettings.PlayerModel.Debug.SwordInHand": 0
+      }
+    },
+    {
+      "name": "back",
+      "cvars": {
+        "gSettings.PlayerModel.MasterSword": 1
+      }
+    },
+    {
+      "name": "side",
+      "cvars": {
+        "gSettings.PlayerModel.Debug.Yaw": 90
+      }
+    },
+    {
+      "name": "vanilla-side",
+      "cvars": {
+        "gSettings.PlayerModel.MasterSword": 0
+      }
+    },
+    {
+      "name": "drawn",
+      "cvars": {
+        "gSettings.PlayerModel.MasterSword": 1,
+        "gSettings.PlayerModel.Debug.Yaw": 150,
+        "gSettings.PlayerModel.Debug.SwordInHand": 1,
+        "gSettings.PlayerModel.Debug.Anim": "objects/gameplay_keep/gPlayerAnim_link_fighter_Lnormal_kiru",
+        "gSettings.PlayerModel.Debug.Frame": 4
+      }
+    },
+    {
+      "name": "vanilla-drawn",
+      "cvars": {
+        "gSettings.PlayerModel.MasterSword": 0
+      }
+    }
+  ]
+}

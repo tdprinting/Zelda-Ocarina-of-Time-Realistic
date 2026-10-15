@@ -26,7 +26,19 @@ cls[skin] = SKIN
 cls[linen] = LINEN
 cls[metal] = METAL
 # Clean speckle with a mode filter
-cls = np.asarray(Image.fromarray(cls).filter(ImageFilter.ModeFilter(5)))
+cls = np.asarray(Image.fromarray(cls).filter(ImageFilter.ModeFilter(5))).copy()
+# Shading painted into the face (under the eyes, the cheeks, the brows) reads as leather by colour; small
+# non-skin islands that skin mostly surrounds are skin.
+from scipy import ndimage
+for c in (LEATHER, LINEN, HAIR):
+    lab, n = ndimage.label(cls == c)
+    if n == 0: continue
+    area = ndimage.sum(np.ones_like(lab), lab, np.arange(1, n + 1))
+    for i in np.nonzero(area < 20000)[0] + 1:
+        m = lab == i
+        ring = ndimage.binary_dilation(m, iterations=3) & ~m
+        if ring.any() and (cls[ring] == SKIN).mean() > 0.6:
+            cls[m] = SKIN
 
 #                 none  cloth linen skin  hair leather metal
 rough = np.array([0.8, 0.88, 0.8, 0.5, 0.42, 0.55, 0.28], np.float32)

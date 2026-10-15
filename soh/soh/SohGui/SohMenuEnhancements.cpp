@@ -4,6 +4,7 @@
 #include "soh/Enhancements/AdultMasks.h"
 #include "soh/Enhancements/BunnyHood.h"
 #include "soh/Enhancements/PlayerModel/PlayerModel.h"
+#include "soh/Enhancements/PlayerModel/PlayerProps.h"
 #include "soh/Enhancements/FileSelectEnhancements.h"
 #include <soh/Enhancements/game-interactor/GameInteractor.h>
 #include <soh/OTRGlobals.h>
@@ -767,6 +768,15 @@ void SohMenu::AddMenuEnhancements() {
         .Options(CheckboxOptions()
                      .Tooltip("Water soaks Link's clothes and they dry over time; rolling on dirt, sand or grass "
                               "leaves marks that water washes off.")
+                     .DefaultValue(true));
+
+    AddWidget(path, "Adult Link Equipment", WIDGET_SEPARATOR_TEXT);
+    AddWidget(path, "High-Detail Master Sword", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_PLAYER_MODEL_MASTER_SWORD)
+        .RaceDisable(false)
+        .Options(CheckboxOptions()
+                     .Tooltip("Replaces the Master Sword in adult Link's hand and the sword and sheath on his back "
+                              "with high-detail models with metal, gold and leather materials.")
                      .DefaultValue(true));
 
     path.column = SECTION_COLUMN_2;

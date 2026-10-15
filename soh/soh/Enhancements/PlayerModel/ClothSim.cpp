@@ -111,6 +111,7 @@ struct State {
     bool valid = false;
     s32 lastFrame = -1;
     V3 lastRoot{};
+    V3 lastFacing{};
 };
 
 static State sState;
@@ -220,8 +221,12 @@ void ClothSim_Update(PlayState* play, const Model& model, const Mat4& base, Mat4
     const s32 frame = play != nullptr ? play->gameplayFrames : 0;
     const V3 root = Origin(world(kLimbRoot));
     const bool newFrame = frame != sState.lastFrame;
+    // Facing direction of the body; a snap of more than about 60 degrees in one frame (warps, cutscene cuts,
+    // the pose debug options) would fling the cloth through the body, so start over from the animated pose.
+    Mat4 rootWorld = world(kLimbRoot);
+    const V3 facing = Norm(V3{ rootWorld.m[2][0], rootWorld.m[2][1], rootWorld.m[2][2] });
     if (!sState.valid || (newFrame && frame != sState.lastFrame + 1) ||
-        Len(root - sState.lastRoot) > 3000.0f * scale) {
+        Len(root - sState.lastRoot) > 3000.0f * scale || Dot(facing, sState.lastFacing) < 0.5f) {
         sState.valid = false;
     }
 
@@ -248,7 +253,16 @@ void ClothSim_Update(PlayState* play, const Model& model, const Mat4& base, Mat4
         if (!sState.valid || c.x.size() != n) {
             c.x = kin;
             c.prev = kin;
-        } else if (newFrame) {
+        } else if (!newFrame) {
+            // Drawn again without a game frame (pause, frozen world, frame interpolation): the chain does not
+            // step, but it still follows the root it hangs from, or the first bone would stretch towards a stale
+            // particle when the pose changed.
+            V3 shift = kin[0] - c.x[0];
+            for (size_t i = 0; i < n; i++) {
+                c.x[i] = c.x[i] + shift;
+                c.prev[i] = c.prev[i] + shift;
+            }
+        } else {
             for (int s = 0; s < substeps; s++) {
                 c.x[0] = kin[0];
                 c.prev[0] = kin[0];
@@ -266,10 +280,32 @@ void ClothSim_Update(PlayState* play, const Model& model, const Mat4& base, Mat4
                         if (Len(dir) == 0.0f) {
                             dir = kinDir;
                         }
-                        dir = LimitAngle(kinDir, dir, c.maxAngle * (1.0f - 0.45f * wetness));
+                        // Segments near the root bend less: the first carries the crown of the hat and the
+                        // top of the skirt, which shear visibly when they swing far.
+                        const float rootFactor = std::min(1.0f, 0.35f * (float)i);
+                        dir = LimitAngle(kinDir, dir, c.maxAngle * rootFactor * (1.0f - 0.45f * wetness));
                         c.x[i] = c.x[i - 1] + dir * (c.restLen[i - 1] * scale);
                         Collide(c.x[i], caps, c.radius * scale);
+                        // Keep the segment length after the push-out; a stretched segment would stretch the mesh.
+                        V3 pushed = Norm(c.x[i] - c.x[i - 1]);
+                        if (Len(pushed) > 0.0f) {
+                            c.x[i] = c.x[i - 1] + pushed * (c.restLen[i - 1] * scale);
+                        }
                     }
+                }
+            }
+        }
+
+        // Collisions can push a particle past its angle limit and trap it on the wrong side of the body after a
+        // sudden pose change (cutscene cuts, warps); a chain that far off starts over from the animated shape.
+        if (sState.valid) {
+            for (size_t i = 1; i < n; i++) {
+                V3 kinDir = Norm(kin[i] - kin[i - 1]);
+                V3 dir = Norm(c.x[i] - c.x[i - 1]);
+                if (Dot(kinDir, dir) < std::cos(std::min(3.0f, c.maxAngle * 1.6f))) {
+                    c.x = kin;
+                    c.prev = kin;
+                    break;
                 }
             }
         }
@@ -299,6 +335,7 @@ void ClothSim_Update(PlayState* play, const Model& model, const Mat4& base, Mat4
         sState.lastFrame = frame;
     }
     sState.lastRoot = root;
+    sState.lastFacing = facing;
 }
 
 } // namespace PlayerModel

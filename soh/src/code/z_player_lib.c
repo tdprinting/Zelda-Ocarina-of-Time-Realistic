@@ -11,6 +11,7 @@
 #include "soh/Enhancements/randomizer/draw.h"
 #include "soh/ResourceManagerHelpers.h"
 #include "soh/Enhancements/PlayerModel/PlayerModel.h"
+#include "soh/Enhancements/PlayerModel/PlayerProps.h"
 
 #include <stdlib.h>
 #include <libultraship/bridge/consolevariablebridge.h>
@@ -1057,10 +1058,28 @@ static void Player_PostLimbDrawPlayerModel(PlayState* play, s32 limbIndex, Gfx**
     }
 }
 
+// The same for the high-detail Master Sword and sheath on adult Link (see PlayerProps.h).
+static OverrideLimbDrawOpa sPlayerPropsOverride;
+static PostLimbDrawOpa sPlayerPropsPost;
+
+static s32 Player_OverrideLimbDrawProps(PlayState* play, s32 limbIndex, Gfx** dList, Vec3f* pos, Vec3s* rot,
+                                        void* arg) {
+    s32 ret = (sPlayerPropsOverride != NULL) ? sPlayerPropsOverride(play, limbIndex, dList, pos, rot, arg) : false;
+    PlayerProps_OverrideLimb(limbIndex, dList);
+    return ret;
+}
+
+static void Player_PostLimbDrawProps(PlayState* play, s32 limbIndex, Gfx** dList, Vec3s* rot, void* arg) {
+    PlayerProps_PostLimb(limbIndex);
+    if (sPlayerPropsPost != NULL) {
+        sPlayerPropsPost(play, limbIndex, dList, rot, arg);
+    }
+}
+
 void Player_DrawImpl(PlayState* play, void** skeleton, Vec3s* jointTable, s32 dListCount, s32 lod, s32 tunic, s32 boots,
                      s32 face, OverrideLimbDrawOpa overrideLimbDraw, PostLimbDrawOpa postLimbDraw, void* data) {
     Color_RGB8* color;
-    if (PlayerModel_ShouldReplace(skeleton)) {
+    if (PlayerModel_ShouldReplace(skeleton) || LINK_IS_ADULT) {
         jointTable = PlayerModel_DebugJointTable(jointTable);
     }
     s32 eyeIndex = (jointTable[22].x & 0xF) - 1;
@@ -1132,6 +1151,13 @@ void Player_DrawImpl(PlayState* play, void** skeleton, Vec3s* jointTable, s32 dL
         SkelAnime_DrawFlexLod(play, skeleton, jointTable, dListCount, Player_OverrideLimbDrawPlayerModel,
                               Player_PostLimbDrawPlayerModel, data, lod);
         PlayerModel_End(play);
+    } else if (LINK_IS_ADULT && !GameInteractor_InvisibleLinkActive()) {
+        sPlayerPropsOverride = overrideLimbDraw;
+        sPlayerPropsPost = postLimbDraw;
+        PlayerProps_Begin();
+        SkelAnime_DrawFlexLod(play, skeleton, jointTable, dListCount, Player_OverrideLimbDrawProps,
+                              Player_PostLimbDrawProps, data, lod);
+        PlayerProps_End(play);
     } else {
         SkelAnime_DrawFlexLod(play, skeleton, jointTable, dListCount, overrideLimbDraw, postLimbDraw, data, lod);
     }

@@ -51,6 +51,8 @@ enum Limb {
 constexpr int kNominalTexSize = 32;
 constexpr int kTexShift = 4;
 constexpr float kTexCoordScale = 16384.0f;
+// Half a texel of the nominal tile in texture coordinate units (S10.5, shifted by kTexShift).
+constexpr float kTexHalfTexel = 0.5f * 32.0f * (1 << kTexShift);
 
 // Column-major 4x4: m[col][row], matching MtxF.
 struct Mat4 {
