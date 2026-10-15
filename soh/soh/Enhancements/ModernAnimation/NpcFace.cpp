@@ -15,6 +15,7 @@
 #include "soh/ActorDB.h"
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "soh/ShipInit.hpp"
+#include "soh/frame_interpolation.h"
 
 extern "C" {
 #include "functions.h"
@@ -329,6 +330,12 @@ void UpdateFace(PlayState* play, Actor* actor, SkelAnime* skel) {
         mood = kPain;
         intensity = 1.0f;
     }
+    // Test hook (tools/anim-test): show one mood on every face
+    s32 forced = CVarGetInteger("gSettings.ModernAnimation.NpcFaceForceMood", -1);
+    if (forced >= 0 && forced < kNumMoods) {
+        mood = (Mood)forced;
+        intensity = 1.0f;
+    }
     face.mood = mood;
 
     Expression goal = kExpressions[kNeutral];
@@ -406,7 +413,7 @@ void UpdateFace(PlayState* play, Actor* actor, SkelAnime* skel) {
     p.lowerLid = std::clamp(face.shown.lowerLid, 0.0f, 1.0f);
     p.tilt = std::clamp(face.shown.tilt, -1.0f, 1.0f);
     p.pupil = face.shown.pupil;
-    p.flags = 1;
+    p.flags = G_FACEPARAMS_ACTIVE;
 }
 
 // Once per frame, before drawing: work out every face from this frame's (vanilla) game state
@@ -469,24 +476,26 @@ void RegisterNpcFace() {
     });
 }
 
-void EmitFaceParams(PlayState* play, const NpcFaceParams* params) {
-#ifdef G_SETFACEPARAMS
-    // The renderer draws lids, gaze and the new iris on eye textures from these parameters
-    NpcFaceParams* copy = nullptr;
-    if (params != nullptr) {
-        copy = (NpcFaceParams*)Graph_Alloc(play->state.gfxCtx, sizeof(NpcFaceParams));
-        *copy = *params;
-    }
-    OPEN_DISPS(play->state.gfxCtx);
-    gSPFaceParams(POLY_OPA_DISP++, copy);
-    gSPFaceParams(POLY_XLU_DISP++, copy);
-    CLOSE_DISPS(play->state.gfxCtx);
-#endif
-}
-
 } // namespace
 
 static RegisterShipInitFunc initFunc(RegisterNpcFace);
+
+static_assert(sizeof(NpcFaceParams) == sizeof(GfxFaceParams), "NpcFaceParams must match the renderer's GfxFaceParams");
+
+// The renderer draws lids, gaze and the new iris on eye textures from these parameters. Kokiri and others fade
+// in on the translucent list, so both lists get them; null resets to vanilla eyes after the actor.
+// Outside the anonymous namespace: OPEN_DISPS declares functions it calls
+static void EmitFaceParams(PlayState* play, const NpcFaceParams* params) {
+    GfxFaceParams* copy = nullptr;
+    if (params != nullptr) {
+        copy = (GfxFaceParams*)Graph_Alloc(play->state.gfxCtx, sizeof(GfxFaceParams));
+        memcpy(copy, params, sizeof(GfxFaceParams));
+    }
+    OPEN_DISPS(play->state.gfxCtx);
+    gSPSetFaceParams(POLY_OPA_DISP++, copy);
+    gSPSetFaceParams(POLY_XLU_DISP++, copy);
+    CLOSE_DISPS(play->state.gfxCtx);
+}
 
 extern "C" {
 

@@ -116,6 +116,8 @@ u16 ParseButtons(const nlohmann::json& list) {
             buttons |= BTN_CDOWN;
         else if (name == "CRIGHT")
             buttons |= BTN_CRIGHT;
+        else if (name == "CUP")
+            buttons |= BTN_CUP;
     }
     return buttons;
 }

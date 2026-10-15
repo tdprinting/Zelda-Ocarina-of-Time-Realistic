@@ -84,6 +84,6 @@ it (its own random generator, no actor writes):
   around, and busy ones keep their eyes on their work.
 
 Each mood is a lid shape (upper and lower lid, brow slant toward the nose, pupil size). The renderer's eye
-shader draws it: `G_SETFACEPARAMS` (pointer to `NpcFaceParams`, NpcFace.h) is emitted around each actor's
-draw once the renderer defines the command; until then the face states are computed but not drawn. The
-animation test logs them per frame (`faces` in manifest.json).
+shader draws it from `gSPSetFaceParams` (a `GfxFaceParams`, emitted around each actor's draw on both display
+lists). `tools/anim-test/faces.json` renders two Kokiri in every mood (`gSettings.ModernAnimation.NpcFaceForceMood`
+forces one mood, for testing) and checks gameplay is unchanged.
