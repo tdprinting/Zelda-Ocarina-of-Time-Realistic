@@ -6,6 +6,8 @@
 #include <soh/GameVersions.h>
 #include "soh/ResourceManagerHelpers.h"
 #include "UIWidgets.hpp"
+#include "SohGui.hpp"
+#include "soh/Updater/Updater.h"
 #include <ship/controller/controldeck/ControlDeck.h>
 #include <ship/Context.h>
 #include <fast/ModernRenderingCVars.h>
@@ -282,6 +284,55 @@ void SohMenu::AddMenuSettings() {
     }
     for (uint32_t i = 0; i < ResourceMgr_GetNumGameVersions(); i++) {
         AddWidget(path, GetGameVersionString(i), WIDGET_TEXT);
+    }
+
+    AddWidget(path, "Updates", WIDGET_SEPARATOR_TEXT);
+    AddWidget(path, "Check for Updates on Launch", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_SETTING("Updater.CheckOnLaunch"))
+        .RaceDisable(false)
+        .Options(CheckboxOptions().DefaultValue(true).Tooltip(
+            "Looks for a newer build on GitHub each time the game starts. Nothing is installed without you pressing "
+            "Install."));
+    AddWidget(path, "UpdaterPanel", WIDGET_CUSTOM)
+        .RaceDisable(false)
+        .HideInSearch(true)
+        .CustomFunction([](WidgetInfo& info) {
+            Updater::Status status = Updater::GetStatus();
+            ImGui::Text("This version: build %u", Updater::CurrentBuild());
+            if (status.latestBuild != 0) {
+                ImGui::Text("Newest on GitHub: build %u", status.latestBuild);
+            }
+            if (!status.message.empty()) {
+                ImGui::TextWrapped("%s", status.message.c_str());
+            }
+            if (status.state == Updater::State::Downloading) {
+                ImGui::ProgressBar(status.progress, ImVec2(-1.0f, 0.0f));
+            }
+
+            bool working = status.state == Updater::State::Checking || status.state == Updater::State::Downloading;
+            if (status.state == Updater::State::UpdateAvailable) {
+                if (UIWidgets::Button("Download Update", ButtonOptions().Color(THEME_COLOR))) {
+                    Updater::DownloadUpdate();
+                }
+            } else if (status.state == Updater::State::ReadyToInstall) {
+                if (UIWidgets::Button(
+                        "Install and Restart",
+                        ButtonOptions()
+                            .Color(THEME_COLOR)
+                            .Tooltip("Closes the game, installs the new build and starts it again. Save first."))) {
+                    Updater::InstallAndRestart();
+                }
+            } else {
+                ButtonOptions opts = ButtonOptions().Tooltip("Looks for a newer build on GitHub.");
+                opts.disabled = working || !Updater::IsSupported();
+                opts.disabledTooltip = Updater::IsSupported() ? "Working..." : "Only available on Windows for now";
+                if (UIWidgets::Button("Check for Updates", opts)) {
+                    Updater::CheckForUpdate();
+                }
+            }
+        });
+    if (CVarGetInteger(CVAR_SETTING("Updater.CheckOnLaunch"), 1) && Updater::IsSupported()) {
+        Updater::CheckForUpdate();
     }
 
     // Audio Settings
