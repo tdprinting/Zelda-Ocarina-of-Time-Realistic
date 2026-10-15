@@ -124,6 +124,8 @@ class GfxRenderingAPI {
     virtual uint32_t CreateMaterialTexture(const uint8_t* rgba32Buf, uint32_t width, uint32_t height) {
         return 0;
     }
+    virtual void UpdateMaterialTexture(uint32_t textureId, const uint8_t* rgba32Buf, uint32_t width, uint32_t height) {
+    }
     virtual void SetMaterialState(const MaterialState& state) {
     }
     virtual bool SupportsAmbientOcclusion() {

@@ -14,6 +14,14 @@ extern "C" void GfxSetNativeDimensions(uint32_t width, uint32_t height) {
     gfx->SetNativeDimensions(width, height);
 }
 
+extern "C" void GfxRefreshMaterialMap(const char* mapPath) {
+    auto wnd = std::dynamic_pointer_cast<Fast::Fast3dWindow>(Ship::Context::GetRawInstance()->GetWindow());
+    auto interpreter = wnd != nullptr ? wnd->GetInterpreterWeak().lock() : nullptr;
+    if (interpreter != nullptr && mapPath != nullptr) {
+        interpreter->RequestMaterialMapRefresh(mapPath);
+    }
+}
+
 extern "C" void GfxGetPixelDepthPrepare(float x, float y) {
     auto wnd = std::dynamic_pointer_cast<Fast::Fast3dWindow>(Ship::Context::GetRawInstance()->GetWindow());
     if (wnd == nullptr) {

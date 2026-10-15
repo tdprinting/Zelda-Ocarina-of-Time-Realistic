@@ -1202,6 +1202,17 @@ uint32_t GfxRenderingAPIOGL::CreateMaterialTexture(const uint8_t* rgba32Buf, uin
     return id;
 }
 
+void GfxRenderingAPIOGL::UpdateMaterialTexture(uint32_t textureId, const uint8_t* rgba32Buf, uint32_t width,
+                                               uint32_t height) {
+    glActiveTexture(GL_TEXTURE0 + MATERIAL_TEXTURE_UNIT);
+    glBindTexture(GL_TEXTURE_2D, textureId);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba32Buf);
+    glGenerateMipmap(GL_TEXTURE_2D);
+    if (mLastActiveTexture >= 0) {
+        glActiveTexture(GL_TEXTURE0 + mLastActiveTexture);
+    }
+}
+
 void GfxRenderingAPIOGL::SetMaterialState(const MaterialState& state) {
     if (mMaterialDefaultTex[0] == 0) {
         const uint8_t flatNormal[4] = { 128, 128, 255, 255 };

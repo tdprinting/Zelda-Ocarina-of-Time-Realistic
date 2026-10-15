@@ -11,6 +11,8 @@
 #include <string>
 #include <string_view>
 #include <memory>
+#include <mutex>
+#include <set>
 
 #include "fast/lus_gbi.h"
 #include "fast/types.h"
@@ -601,6 +603,14 @@ class Interpreter {
     const LoadedMaterial* ResolveMaterial(Fast::Texture* resource);
     const LoadedMaterial* FindMaterial(Fast::Texture* resource);
     uint32_t LoadMaterialMap(const std::string& path);
+    bool ReadMaterialMap(const std::string& path, std::vector<uint8_t>& rgba, uint32_t& width, uint32_t& height);
+    // Re-uploads a material map (by its path in the manifest) at the start of the next frame, for mods that
+    // rewrite a map's pixels at runtime. Safe to call from any thread.
+    void RequestMaterialMapRefresh(const std::string& path);
+    void ProcessMaterialMapRefreshes();
+    std::unordered_map<std::string, uint32_t> mMaterialMapIds;
+    std::set<std::string> mMaterialRefreshQueue;
+    std::mutex mMaterialRefreshMutex;
     bool mMaterialManifestsLoaded = false;
     bool mModernMaterialsEnabled = true;
     std::unordered_map<std::string, MaterialDef> mMaterialDefs;

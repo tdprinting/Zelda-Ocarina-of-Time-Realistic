@@ -37,6 +37,18 @@ API_EXPORT void GfxGetPixelDepthPrepare(float x, float y);
  */
 API_EXPORT uint16_t GfxGetPixelDepth(float x, float y);
 
+/**
+ * @brief Re-uploads a material map at the start of the next frame.
+ *
+ * For mods that rewrite a map's pixels at runtime (for example wetness or mud on a character). @p mapPath is
+ * the map's path as written in the material manifest (a texture resource or an image file). Edit the
+ * resource's ImageData in place, then call this; maps no material has used yet are skipped (they are read
+ * fresh on first use). Safe to call from any thread.
+ *
+ * @param mapPath Path of the normal, roughness-metal or skin-mask map.
+ */
+API_EXPORT void GfxRefreshMaterialMap(const char* mapPath);
+
 #ifdef __cplusplus
 }
 #endif

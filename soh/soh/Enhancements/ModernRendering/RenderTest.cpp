@@ -15,6 +15,8 @@
 #include <fast/Fast3dWindow.h>
 #include <fast/interpreter.h>
 #include <libultraship/bridge/consolevariablebridge.h>
+#include <libultraship/bridge/gfxbridge.h>
+#include <cstring>
 #include <spdlog/spdlog.h>
 
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
@@ -46,6 +48,9 @@ struct TestScene {
 struct TestVariant {
     std::string name;
     nlohmann::json cvars;
+    // [{ "path": texture resource, "rgba": [r, g, b, a] }]: fill an RGBA32 texture in place, then ask the
+    // renderer to refresh it as a material map (exercises GfxRefreshMaterialMap)
+    nlohmann::json fillTextures;
 };
 
 enum class Phase { WaitTitle, Loading, Capturing, Done };
@@ -85,6 +90,24 @@ void ApplyCVars(const nlohmann::json& cvars) {
         } else if (it->is_string()) {
             CVarSetString(it.key().c_str(), it->get<std::string>().c_str());
         }
+    }
+}
+
+void ApplyVariant(const TestVariant& variant) {
+    ApplyCVars(variant.cvars);
+    for (const auto& fill : variant.fillTextures) {
+        const std::string path = fill.value("path", std::string());
+        auto tex = std::dynamic_pointer_cast<Fast::Texture>(
+            Ship::Context::GetRawInstance()->GetResourceManager()->LoadResource(path));
+        if (tex == nullptr || tex->ImageData == nullptr || tex->Type != Fast::TextureType::RGBA32bpp) {
+            SPDLOG_ERROR("Render test: {} is not an RGBA32 texture", path);
+            continue;
+        }
+        const auto rgba = fill.value("rgba", std::vector<uint8_t>{ 0, 0, 0, 255 });
+        for (uint32_t i = 0; i + 3 < tex->ImageDataSize; i += 4) {
+            memcpy(tex->ImageData + i, rgba.data(), 4);
+        }
+        GfxRefreshMaterialMap(path.c_str());
     }
 }
 
@@ -163,7 +186,7 @@ void OnFrame() {
         sTest.variantIndex = 0;
         sTest.ticks = 0;
         sTest.captureRequested = false;
-        ApplyCVars(sTest.variants[0].cvars);
+        ApplyVariant(sTest.variants[0]);
         return;
     }
 
@@ -185,7 +208,7 @@ void OnFrame() {
     sTest.captureRequested = false;
     sTest.ticks = 0;
     if (++sTest.variantIndex < sTest.variants.size()) {
-        ApplyCVars(sTest.variants[sTest.variantIndex].cvars);
+        ApplyVariant(sTest.variants[sTest.variantIndex]);
         return;
     }
 
@@ -227,8 +250,8 @@ bool LoadTest(const char* path) {
         sTest.scenes.push_back(scene);
     }
     for (const auto& v : json["variants"]) {
-        sTest.variants.push_back(
-            { v.value("name", std::string("variant")), v.value("cvars", nlohmann::json::object()) });
+        sTest.variants.push_back({ v.value("name", std::string("variant")), v.value("cvars", nlohmann::json::object()),
+                                   v.value("fillTextures", nlohmann::json::array()) });
     }
     if (sTest.scenes.empty() || sTest.variants.empty()) {
         SPDLOG_ERROR("Render test: {} needs at least one scene and one variant", path);

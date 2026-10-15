@@ -119,6 +119,7 @@ class GfxRenderingAPIOGL final : public GfxRenderingAPI {
     bool SupportsModernLighting() override;
     void SetModernLightingState(const ModernLightingState& state) override;
     uint32_t CreateMaterialTexture(const uint8_t* rgba32Buf, uint32_t width, uint32_t height) override;
+    void UpdateMaterialTexture(uint32_t textureId, const uint8_t* rgba32Buf, uint32_t width, uint32_t height) override;
     void SetMaterialState(const MaterialState& state) override;
     bool ReadFramebufferRGBA8(int fbId, uint32_t& width, uint32_t& height, std::vector<uint8_t>& out) override;
     bool SupportsAmbientOcclusion() override;

@@ -53,6 +53,20 @@ clearcoat-like lobe on the eyeball's geometric normal, so it stays sharp over a 
 soft catchlight from the camera side, and leaves out the rim light. The normal map, if any, shapes the
 iris and sclera under the cornea. The model animates the eyeballs itself.
 
+## Changing maps at runtime
+
+A mod can rewrite a map while the game runs (wet cloth darkening and turning glossy, mud building up).
+Ship the map as an RGBA32 texture resource, edit the resource's `ImageData` in place, then call:
+
+```c
+#include <libultraship/bridge/gfxbridge.h>
+GfxRefreshMaterialMap("textures/player-model/child-link/rm");
+```
+
+The renderer re-uploads that map (with fresh mipmaps) at the start of the next frame. It works for
+normal, roughness-metal and skin-mask maps and is safe to call from any thread. Base color textures are
+not material maps: invalidate those with `G_INVALTEXCACHE` as usual.
+
 ## Texture coordinates for large textures
 
 Vertex texture coordinates are S10.5 fixed point, so they cover ±1024 texels. For textures of 1024 or

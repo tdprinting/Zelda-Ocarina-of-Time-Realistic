@@ -1699,43 +1699,86 @@ void Interpreter::LoadMaterialManifests() {
     SPDLOG_INFO("Loaded {} materials from mod packs", mMaterialDefs.size());
 }
 
-uint32_t Interpreter::LoadMaterialMap(const std::string& path) {
-    if (path.empty()) {
-        return 0;
-    }
+bool Interpreter::ReadMaterialMap(const std::string& path, std::vector<uint8_t>& rgba, uint32_t& width,
+                                  uint32_t& height) {
     // Image files (PNG, TGA, JPEG) can be dropped into a mod pack as-is
     const size_t dot = path.rfind('.');
     if (dot != std::string::npos && path.find('/', dot) == std::string::npos) {
         auto file = Ship::Context::GetRawInstance()->GetResourceManager()->GetArchiveManager()->LoadFile(path);
         if (file == nullptr || file->Buffer == nullptr) {
             SPDLOG_ERROR("Material map {} not found", path);
-            return 0;
+            return false;
         }
         int w, h, channels;
         stbi_uc* data = stbi_load_from_memory(reinterpret_cast<const stbi_uc*>(file->Buffer->data()),
                                               (int)file->Buffer->size(), &w, &h, &channels, 4);
         if (data == nullptr) {
             SPDLOG_ERROR("Material map {}: {}", path, stbi_failure_reason());
-            return 0;
+            return false;
         }
-        uint32_t id = mRapi->CreateMaterialTexture(data, w, h);
+        rgba.assign(data, data + (size_t)w * h * 4);
         stbi_image_free(data);
-        return id;
+        width = w;
+        height = h;
+        return true;
     }
-    // Otherwise a texture resource; RGBA32 is the format that keeps normal and roughness data intact
+    // Otherwise a texture resource; RGBA32 is the format that keeps normal and roughness data intact.
+    // This reads the cached resource, so edits a mod makes to its ImageData show up on refresh.
     auto tex = std::dynamic_pointer_cast<Fast::Texture>(
         Ship::Context::GetRawInstance()->GetResourceManager()->LoadResourceProcess(path));
     if (tex == nullptr || tex->ImageData == nullptr) {
         SPDLOG_ERROR("Material map {} not found", path);
-        return 0;
+        return false;
     }
-    uint32_t w = (uint32_t)lroundf(tex->Width * tex->HByteScale);
-    uint32_t h = (uint32_t)lroundf(tex->Height * tex->VPixelScale);
-    if (tex->Type != Fast::TextureType::RGBA32bpp || (uint64_t)w * h * 4 > tex->ImageDataSize) {
+    width = (uint32_t)lroundf(tex->Width * tex->HByteScale);
+    height = (uint32_t)lroundf(tex->Height * tex->VPixelScale);
+    if (tex->Type != Fast::TextureType::RGBA32bpp || (uint64_t)width * height * 4 > tex->ImageDataSize) {
         SPDLOG_ERROR("Material map {} must be an RGBA32 texture or an image file", path);
+        return false;
+    }
+    rgba.assign(tex->ImageData, tex->ImageData + (size_t)width * height * 4);
+    return true;
+}
+
+uint32_t Interpreter::LoadMaterialMap(const std::string& path) {
+    if (path.empty()) {
         return 0;
     }
-    return mRapi->CreateMaterialTexture(tex->ImageData, w, h);
+    auto cached = mMaterialMapIds.find(path);
+    if (cached != mMaterialMapIds.end()) {
+        return cached->second;
+    }
+    std::vector<uint8_t> rgba;
+    uint32_t width, height;
+    uint32_t id =
+        ReadMaterialMap(path, rgba, width, height) ? mRapi->CreateMaterialTexture(rgba.data(), width, height) : 0;
+    mMaterialMapIds[path] = id;
+    return id;
+}
+
+void Interpreter::RequestMaterialMapRefresh(const std::string& path) {
+    std::lock_guard<std::mutex> lock(mMaterialRefreshMutex);
+    mMaterialRefreshQueue.insert(path);
+}
+
+void Interpreter::ProcessMaterialMapRefreshes() {
+    std::set<std::string> queue;
+    {
+        std::lock_guard<std::mutex> lock(mMaterialRefreshMutex);
+        queue.swap(mMaterialRefreshQueue);
+    }
+    for (const auto& path : queue) {
+        auto it = mMaterialMapIds.find(path);
+        // A map no material has used yet will be read fresh when it first is
+        if (it == mMaterialMapIds.end() || it->second == 0) {
+            continue;
+        }
+        std::vector<uint8_t> rgba;
+        uint32_t width, height;
+        if (ReadMaterialMap(path, rgba, width, height)) {
+            mRapi->UpdateMaterialTexture(it->second, rgba.data(), width, height);
+        }
+    }
 }
 
 const Interpreter::LoadedMaterial* Interpreter::ResolveMaterial(Fast::Texture* resource) {
@@ -5419,6 +5462,7 @@ bool Interpreter::ViewportMatchesRendererResolution() {
 
 void Interpreter::StartFrame() {
     UpdateModernLightingSettings();
+    ProcessMaterialMapRefreshes();
     mWapi->GetDimensions(&mGfxCurrentWindowDimensions.width, &mGfxCurrentWindowDimensions.height, &mCurWindowPosX,
                          &mCurWindowPosY);
     if (mCurDimensions.height == 0) {

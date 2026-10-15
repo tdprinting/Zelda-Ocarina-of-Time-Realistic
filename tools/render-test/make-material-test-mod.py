@@ -10,6 +10,7 @@ headless render tests: normal mapping, metalness, roughness and the eye shader.
 import io
 import json
 import math
+import struct
 import sys
 import zipfile
 
@@ -47,6 +48,15 @@ def solid(rgba):
     return Image.new("RGBA", (4, 4), rgba)
 
 
+def rgba32_resource(image):
+    """A libultraship binary texture resource (RGBA32), as mods ship maps they rewrite at runtime."""
+    header = bytearray(0x40)
+    header[4:8] = b"XETO"  # resource type OTEX, little endian
+    header[12:20] = b"\xef\xbe\xad\xde" * 2
+    data = image.convert("RGBA").tobytes()
+    return bytes(header) + struct.pack("<IIII", 1, image.width, image.height, len(data)) + data
+
+
 def main():
     out_path = sys.argv[1]
     base = "textures/render-test/"
@@ -56,13 +66,15 @@ def main():
         # glTF layout: G roughness, B metalness
         base + "polished-metal.png": png_bytes(solid((255, 70, 255, 255))),
         base + "leather.png": png_bytes(solid((255, 170, 0, 255))),
+        # The shield's roughness-metal map is a texture resource so the test can rewrite it at runtime
+        base + "shield-rm": rgba32_resource(solid((255, 70, 255, 255))),
     }
     link = "objects/object_link_child/"
     manifest = {
         "version": 1,
         "materials": [
             {"texture": link + "gLinkChildHylianShieldBackTex", "normal": base + "bumps.png",
-             "roughnessMetal": base + "polished-metal.png"},
+             "roughnessMetal": base + "shield-rm"},
             {"texture": link + "gLinkChildDekuShieldBackTex", "normal": base + "bumps.png",
              "roughnessMetal": base + "polished-metal.png"},
             {"texture": link + "gLinkChildBootTex", "normal": base + "fine-bumps.png",
