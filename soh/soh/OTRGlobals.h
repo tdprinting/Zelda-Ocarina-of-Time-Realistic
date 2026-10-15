@@ -96,6 +96,7 @@ uint64_t GetPerfCounter();
 uint64_t osGetTime(void);
 uint32_t osGetCount(void);
 float OTRGetAspectRatio(void);
+void OTRSetHudAspectRatioOverride(float aspectRatio);
 float OTRGetDimensionFromLeftEdge(float v);
 float OTRGetDimensionFromRightEdge(float v);
 int16_t OTRGetRectDimensionFromLeftEdge(float v);

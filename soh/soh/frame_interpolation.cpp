@@ -567,6 +567,16 @@ void FrameInterpolation_RecordActorPosRotMatrix(void) {
     next_is_actor_pos_rot_matrix = true;
 }
 
+bool FrameInterpolation_PauseRecording(void) {
+    bool was = is_recording;
+    is_recording = false;
+    return was;
+}
+
+void FrameInterpolation_ResumeRecording(bool wasRecording) {
+    is_recording = wasRecording;
+}
+
 void FrameInterpolation_RecordMatrixPush(void) {
     if (!is_recording)
         return;

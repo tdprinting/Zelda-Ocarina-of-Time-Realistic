@@ -9,7 +9,7 @@ on:
 jobs:
   pr-artifacts:
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.event == 'pull_request' }}
+    if: ${{ github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'push' }}
     steps:
       - id: 'pr-number'
         uses: actions/github-script@v9
@@ -32,11 +32,13 @@ jobs:
             })();
 
             if (!prNumber) {
-              return core.error(`No matching pull request found`);
+              core.info(`No matching pull request found`);
+              return "";
             }
 
             return prNumber;
       - id: 'artifacts-text'
+        if: ${{ steps.pr-number.outputs.result != '' }}
         uses: actions/github-script@v9
         with:
           result-encoding: string
@@ -54,6 +56,7 @@ jobs:
               return acc;
             }, '### Build Artifacts');
       - id: 'add-to-pr'
+        if: ${{ steps.pr-number.outputs.result != '' }}
         uses: garrettjoecox/pr-section@4.0.0
         with:
           repo-token: '${{ secrets.GITHUB_TOKEN }}'

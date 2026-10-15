@@ -1,0 +1,7 @@
+.gradle/
+build/
+app/build/
+app/.cxx/
+local.properties
+# built by build-apk.sh from soh/assets/custom
+app/src/main/assets/soh.o2r

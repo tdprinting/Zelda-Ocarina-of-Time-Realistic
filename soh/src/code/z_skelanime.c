@@ -6,6 +6,7 @@
 #include "soh/ResourceManagerHelpers.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include <libultraship/bridge/consolevariablebridge.h>
+#include "soh/Enhancements/ModernAnimation/ModernAnimation.h"
 
 #define ANIM_INTERP 1
 
@@ -45,7 +46,7 @@ void SkelAnime_DrawLimbLod(PlayState* play, s32 limbIndex, void** skeleton, Vec3
     dList = limb->dLists[lod];
 
     if ((overrideLimbDraw == NULL) || !overrideLimbDraw(play, limbIndex, &dList, &pos, &rot, arg)) {
-        Matrix_TranslateRotateZYX(&pos, &rot);
+        ModernAnim_LimbMatrix(limbIndex, &pos, &rot);
         if (dList != NULL) {
             gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_LOAD);
             gSPDisplayList(POLY_OPA_DISP++, dList);
@@ -73,8 +74,9 @@ void SkelAnime_DrawLimbLod(PlayState* play, s32 limbIndex, void** skeleton, Vec3
  * Draw all limbs of type `LodLimb` in a given skeleton
  * Near or far display list is specified via `lod`
  */
-void SkelAnime_DrawLod(PlayState* play, void** skeleton, Vec3s* jointTable, OverrideLimbDrawOpa overrideLimbDraw,
-                       PostLimbDrawOpa postLimbDraw, void* arg, s32 lod) {
+static void SkelAnime_DrawLod_Impl(PlayState* play, void** skeleton, Vec3s* jointTable,
+                                   OverrideLimbDrawOpa overrideLimbDraw, PostLimbDrawOpa postLimbDraw, void* arg,
+                                   s32 lod) {
     LodLimb* rootLimb;
     s32 pad;
     Gfx* dList;
@@ -105,7 +107,7 @@ void SkelAnime_DrawLod(PlayState* play, void** skeleton, Vec3s* jointTable, Over
     dList = rootLimb->dLists[lod];
 
     if ((overrideLimbDraw == NULL) || !overrideLimbDraw(play, 1, &dList, &pos, &rot, arg)) {
-        Matrix_TranslateRotateZYX(&pos, &rot);
+        ModernAnim_LimbMatrix(1, &pos, &rot);
         if (dList != NULL) {
             gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_LOAD);
             gSPDisplayList(POLY_OPA_DISP++, dList);
@@ -122,6 +124,16 @@ void SkelAnime_DrawLod(PlayState* play, void** skeleton, Vec3s* jointTable, Over
     Matrix_Pop();
 
     CLOSE_DISPS(play->state.gfxCtx);
+}
+
+// SOH [Enhancement] Modern animation: draws the smoothed pose while hitboxes and other positions taken from
+// the limb matrices keep the original pose
+void SkelAnime_DrawLod(PlayState* play, void** skeleton, Vec3s* jointTable, OverrideLimbDrawOpa overrideLimbDraw,
+                       PostLimbDrawOpa postLimbDraw, void* arg, s32 lod) {
+    s32 modern = ModernAnim_BeginDraw(jointTable);
+
+    SkelAnime_DrawLod_Impl(play, skeleton, jointTable, overrideLimbDraw, postLimbDraw, arg, lod);
+    ModernAnim_EndDraw(modern);
 }
 
 /**
@@ -153,7 +165,7 @@ void SkelAnime_DrawFlexLimbLod(PlayState* play, s32 limbIndex, void** skeleton, 
     play->flexLimbOverrideMTX = mtx;
 
     if ((overrideLimbDraw == NULL) || !overrideLimbDraw(play, limbIndex, &newDList, &pos, &rot, arg)) {
-        Matrix_TranslateRotateZYX(&pos, &rot);
+        ModernAnim_LimbMatrix(limbIndex, &pos, &rot);
         if (newDList != NULL) {
             MATRIX_TOMTX(*mtx);
             {
@@ -189,8 +201,9 @@ void SkelAnime_DrawFlexLimbLod(PlayState* play, s32 limbIndex, void** skeleton, 
  * Limbs in a flexible skeleton have meshes that can stretch to line up with other limbs.
  * An array of matrices is dynamically allocated so each limb can access any transform to ensure its meshes line up.
  */
-void SkelAnime_DrawFlexLod(PlayState* play, void** skeleton, Vec3s* jointTable, s32 dListCount,
-                           OverrideLimbDrawOpa overrideLimbDraw, PostLimbDrawOpa postLimbDraw, void* arg, s32 lod) {
+static void SkelAnime_DrawFlexLod_Impl(PlayState* play, void** skeleton, Vec3s* jointTable, s32 dListCount,
+                                       OverrideLimbDrawOpa overrideLimbDraw, PostLimbDrawOpa postLimbDraw, void* arg,
+                                       s32 lod) {
     LodLimb* rootLimb;
     s32 pad;
     Gfx* newDList;
@@ -227,7 +240,7 @@ void SkelAnime_DrawFlexLod(PlayState* play, void** skeleton, Vec3s* jointTable, 
     play->flexLimbOverrideMTX = &mtx;
 
     if ((overrideLimbDraw == 0) || !overrideLimbDraw(play, 1, &newDList, &pos, &rot, arg)) {
-        Matrix_TranslateRotateZYX(&pos, &rot);
+        ModernAnim_LimbMatrix(1, &pos, &rot);
         if (newDList != NULL) {
             MATRIX_TOMTX(mtx);
             gDPNoOpString(POLY_OPA_DISP++, "T5ST", 0);
@@ -253,6 +266,16 @@ void SkelAnime_DrawFlexLod(PlayState* play, void** skeleton, Vec3s* jointTable, 
     CLOSE_DISPS(play->state.gfxCtx);
 }
 
+// SOH [Enhancement] Modern animation: draws the smoothed pose while hitboxes and other positions taken from
+// the limb matrices keep the original pose
+void SkelAnime_DrawFlexLod(PlayState* play, void** skeleton, Vec3s* jointTable, s32 dListCount,
+                           OverrideLimbDrawOpa overrideLimbDraw, PostLimbDrawOpa postLimbDraw, void* arg, s32 lod) {
+    s32 modern = ModernAnim_BeginDraw(jointTable);
+
+    SkelAnime_DrawFlexLod_Impl(play, skeleton, jointTable, dListCount, overrideLimbDraw, postLimbDraw, arg, lod);
+    ModernAnim_EndDraw(modern);
+}
+
 /**
  * Draw a limb of type `StandardLimb` to the polyOpa buffer
  */
@@ -275,7 +298,7 @@ void SkelAnime_DrawLimbOpa(PlayState* play, s32 limbIndex, void** skeleton, Vec3
     dList = limb->dList;
 
     if ((overrideLimbDraw == NULL) || !overrideLimbDraw(play, limbIndex, &dList, &pos, &rot, arg)) {
-        Matrix_TranslateRotateZYX(&pos, &rot);
+        ModernAnim_LimbMatrix(limbIndex, &pos, &rot);
         if (dList != NULL) {
             gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_LOAD);
             gSPDisplayList(POLY_OPA_DISP++, dList);
@@ -328,8 +351,8 @@ Gfx* SkelAnime_DrawSkeleton2(PlayState* play, SkelAnime* skelAnime, OverrideLimb
 /**
  * Draw all limbs of type `StandardLimb` in a given skeleton to the polyOpa buffer
  */
-void SkelAnime_DrawOpa(PlayState* play, void** skeleton, Vec3s* jointTable, OverrideLimbDrawOpa overrideLimbDraw,
-                       PostLimbDrawOpa postLimbDraw, void* arg) {
+static void SkelAnime_DrawOpa_Impl(PlayState* play, void** skeleton, Vec3s* jointTable,
+                                   OverrideLimbDrawOpa overrideLimbDraw, PostLimbDrawOpa postLimbDraw, void* arg) {
     StandardLimb* rootLimb;
     s32 pad;
     Gfx* dList;
@@ -356,7 +379,7 @@ void SkelAnime_DrawOpa(PlayState* play, void** skeleton, Vec3s* jointTable, Over
     dList = rootLimb->dList;
 
     if ((overrideLimbDraw == NULL) || !overrideLimbDraw(play, 1, &dList, &pos, &rot, arg)) {
-        Matrix_TranslateRotateZYX(&pos, &rot);
+        ModernAnim_LimbMatrix(1, &pos, &rot);
         if (dList != NULL) {
             gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_LOAD);
             gSPDisplayList(POLY_OPA_DISP++, dList);
@@ -374,6 +397,16 @@ void SkelAnime_DrawOpa(PlayState* play, void** skeleton, Vec3s* jointTable, Over
     Matrix_Pop();
 
     CLOSE_DISPS(play->state.gfxCtx);
+}
+
+// SOH [Enhancement] Modern animation: draws the smoothed pose while hitboxes and other positions taken from
+// the limb matrices keep the original pose
+void SkelAnime_DrawOpa(PlayState* play, void** skeleton, Vec3s* jointTable, OverrideLimbDrawOpa overrideLimbDraw,
+                       PostLimbDrawOpa postLimbDraw, void* arg) {
+    s32 modern = ModernAnim_BeginDraw(jointTable);
+
+    SkelAnime_DrawOpa_Impl(play, skeleton, jointTable, overrideLimbDraw, postLimbDraw, arg);
+    ModernAnim_EndDraw(modern);
 }
 
 /**
@@ -405,7 +438,7 @@ void SkelAnime_DrawFlexLimbOpa(PlayState* play, s32 limbIndex, void** skeleton, 
     play->flexLimbOverrideMTX = limbMatricies;
 
     if ((overrideLimbDraw == NULL) || !overrideLimbDraw(play, limbIndex, &newDList, &pos, &rot, arg)) {
-        Matrix_TranslateRotateZYX(&pos, &rot);
+        ModernAnim_LimbMatrix(limbIndex, &pos, &rot);
         if (newDList != NULL) {
             MATRIX_TOMTX(*limbMatricies);
             gSPMatrix(POLY_OPA_DISP++, *limbMatricies, G_MTX_LOAD);
@@ -440,8 +473,8 @@ void SkelAnime_DrawFlexLimbOpa(PlayState* play, s32 limbIndex, void** skeleton, 
  * Limbs in a flexible skeleton have meshes that can stretch to line up with other limbs.
  * An array of matrices is dynamically allocated so each limb can access any transform to ensure its meshes line up.
  */
-void SkelAnime_DrawFlexOpa(PlayState* play, void** skeleton, Vec3s* jointTable, s32 dListCount,
-                           OverrideLimbDrawOpa overrideLimbDraw, PostLimbDrawOpa postLimbDraw, void* arg) {
+static void SkelAnime_DrawFlexOpa_Impl(PlayState* play, void** skeleton, Vec3s* jointTable, s32 dListCount,
+                                       OverrideLimbDrawOpa overrideLimbDraw, PostLimbDrawOpa postLimbDraw, void* arg) {
     StandardLimb* rootLimb;
     s32 pad;
     Gfx* newDList;
@@ -474,7 +507,7 @@ void SkelAnime_DrawFlexOpa(PlayState* play, void** skeleton, Vec3s* jointTable, 
     newDList = limbDList = rootLimb->dList;
 
     if ((overrideLimbDraw == NULL) || !overrideLimbDraw(play, 1, &newDList, &pos, &rot, arg)) {
-        Matrix_TranslateRotateZYX(&pos, &rot);
+        ModernAnim_LimbMatrix(1, &pos, &rot);
         if (newDList != NULL) {
             MATRIX_TOMTX(mtx);
             gSPMatrix(POLY_OPA_DISP++, mtx, G_MTX_LOAD);
@@ -497,6 +530,16 @@ void SkelAnime_DrawFlexOpa(PlayState* play, void** skeleton, Vec3s* jointTable, 
 
     Matrix_Pop();
     CLOSE_DISPS(play->state.gfxCtx);
+}
+
+// SOH [Enhancement] Modern animation: draws the smoothed pose while hitboxes and other positions taken from
+// the limb matrices keep the original pose
+void SkelAnime_DrawFlexOpa(PlayState* play, void** skeleton, Vec3s* jointTable, s32 dListCount,
+                           OverrideLimbDrawOpa overrideLimbDraw, PostLimbDrawOpa postLimbDraw, void* arg) {
+    s32 modern = ModernAnim_BeginDraw(jointTable);
+
+    SkelAnime_DrawFlexOpa_Impl(play, skeleton, jointTable, dListCount, overrideLimbDraw, postLimbDraw, arg);
+    ModernAnim_EndDraw(modern);
 }
 
 /**
@@ -574,7 +617,7 @@ Gfx* SkelAnime_DrawLimb(PlayState* play, s32 limbIndex, void** skeleton, Vec3s* 
     dList = limb->dList;
 
     if ((overrideLimbDraw == NULL) || !overrideLimbDraw(play, limbIndex, &dList, &pos, &rot, arg, &gfx)) {
-        Matrix_TranslateRotateZYX(&pos, &rot);
+        ModernAnim_LimbMatrix(limbIndex, &pos, &rot);
         if (dList != NULL) {
             gSPMatrix(gfx++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_LOAD);
             gSPDisplayList(gfx++, dList);
@@ -601,8 +644,8 @@ Gfx* SkelAnime_DrawLimb(PlayState* play, s32 limbIndex, void** skeleton, Vec3s* 
 /**
  * Draw all limbs of type `StandardLimb` in a given skeleton to the specified display buffer
  */
-Gfx* SkelAnime_Draw(PlayState* play, void** skeleton, Vec3s* jointTable, OverrideLimbDraw overrideLimbDraw,
-                    PostLimbDraw postLimbDraw, void* arg, Gfx* gfx) {
+static Gfx* SkelAnime_Draw_Impl(PlayState* play, void** skeleton, Vec3s* jointTable, OverrideLimbDraw overrideLimbDraw,
+                                PostLimbDraw postLimbDraw, void* arg, Gfx* gfx) {
     StandardLimb* rootLimb;
     s32 pad;
     Gfx* dList;
@@ -630,7 +673,7 @@ Gfx* SkelAnime_Draw(PlayState* play, void** skeleton, Vec3s* jointTable, Overrid
     dList = rootLimb->dList;
 
     if ((overrideLimbDraw == NULL) || !overrideLimbDraw(play, 1, &dList, &pos, &rot, arg, &gfx)) {
-        Matrix_TranslateRotateZYX(&pos, &rot);
+        ModernAnim_LimbMatrix(1, &pos, &rot);
         if (dList != NULL) {
             gSPMatrix(gfx++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_LOAD);
             gSPDisplayList(gfx++, dList);
@@ -647,6 +690,17 @@ Gfx* SkelAnime_Draw(PlayState* play, void** skeleton, Vec3s* jointTable, Overrid
 
     Matrix_Pop();
 
+    return gfx;
+}
+
+// SOH [Enhancement] Modern animation: draws the smoothed pose while hitboxes and other positions taken from
+// the limb matrices keep the original pose
+Gfx* SkelAnime_Draw(PlayState* play, void** skeleton, Vec3s* jointTable, OverrideLimbDraw overrideLimbDraw,
+                    PostLimbDraw postLimbDraw, void* arg, Gfx* gfx) {
+    s32 modern = ModernAnim_BeginDraw(jointTable);
+
+    gfx = SkelAnime_Draw_Impl(play, skeleton, jointTable, overrideLimbDraw, postLimbDraw, arg, gfx);
+    ModernAnim_EndDraw(modern);
     return gfx;
 }
 
@@ -674,7 +728,7 @@ Gfx* SkelAnime_DrawFlexLimb(PlayState* play, s32 limbIndex, void** skeleton, Vec
 
     newDList = limbDList = limb->dList;
     if ((overrideLimbDraw == NULL) || !overrideLimbDraw(play, limbIndex, &newDList, &pos, &rot, arg, &gfx)) {
-        Matrix_TranslateRotateZYX(&pos, &rot);
+        ModernAnim_LimbMatrix(limbIndex, &pos, &rot);
         if (newDList != NULL) {
             MATRIX_TOMTX(*mtx);
             gSPMatrix(gfx++, *mtx, G_MTX_LOAD);
@@ -708,8 +762,8 @@ Gfx* SkelAnime_DrawFlexLimb(PlayState* play, s32 limbIndex, void** skeleton, Vec
  * Limbs in a flexible skeleton have meshes that can stretch to line up with other limbs.
  * An array of matrices is dynamically allocated so each limb can access any transform to ensure its meshes line up.
  */
-Gfx* SkelAnime_DrawFlex(PlayState* play, void** skeleton, Vec3s* jointTable, s32 dListCount,
-                        OverrideLimbDraw overrideLimbDraw, PostLimbDraw postLimbDraw, void* arg, Gfx* gfx) {
+static Gfx* SkelAnime_DrawFlex_Impl(PlayState* play, void** skeleton, Vec3s* jointTable, s32 dListCount,
+                                    OverrideLimbDraw overrideLimbDraw, PostLimbDraw postLimbDraw, void* arg, Gfx* gfx) {
     StandardLimb* rootLimb;
     s32 pad;
     Gfx* newDList;
@@ -739,7 +793,7 @@ Gfx* SkelAnime_DrawFlex(PlayState* play, void** skeleton, Vec3s* jointTable, s32
     newDList = limbDList = rootLimb->dList;
 
     if ((overrideLimbDraw == NULL) || !overrideLimbDraw(play, 1, &newDList, &pos, &rot, arg, &gfx)) {
-        Matrix_TranslateRotateZYX(&pos, &rot);
+        ModernAnim_LimbMatrix(1, &pos, &rot);
         if (newDList != NULL) {
             MATRIX_TOMTX(mtx);
             gSPMatrix(gfx++, mtx, G_MTX_LOAD);
@@ -760,6 +814,17 @@ Gfx* SkelAnime_DrawFlex(PlayState* play, void** skeleton, Vec3s* jointTable, s32
 
     Matrix_Pop();
 
+    return gfx;
+}
+
+// SOH [Enhancement] Modern animation: draws the smoothed pose while hitboxes and other positions taken from
+// the limb matrices keep the original pose
+Gfx* SkelAnime_DrawFlex(PlayState* play, void** skeleton, Vec3s* jointTable, s32 dListCount,
+                        OverrideLimbDraw overrideLimbDraw, PostLimbDraw postLimbDraw, void* arg, Gfx* gfx) {
+    s32 modern = ModernAnim_BeginDraw(jointTable);
+
+    gfx = SkelAnime_DrawFlex_Impl(play, skeleton, jointTable, dListCount, overrideLimbDraw, postLimbDraw, arg, gfx);
+    ModernAnim_EndDraw(modern);
     return gfx;
 }
 
@@ -909,6 +974,23 @@ void AnimationContext_SetLoadFrame(PlayState* play, LinkAnimationHeader* animati
         }
         memcpy(ram, (uintptr_t)animData + (((sizeof(Vec3s) * limbCount + 2) * frame)), sizeof(Vec3s) * limbCount + 2);
     }
+}
+
+/**
+ * SOH [Enhancement] Copies one frame of a Link animation into frameTable without going through the animation
+ * queue. Returns false if the animation data is unavailable.
+ */
+s32 LinkAnimation_LoadFrameDirect(LinkAnimationHeader* animation, s32 frame, s32 limbCount, Vec3s* frameTable) {
+    if (ResourceMgr_OTRSigCheck(animation) != 0) {
+        animation = ResourceMgr_LoadAnimByName(animation);
+    }
+    if (animation == NULL || animation->segment == NULL) {
+        return false;
+    }
+    frame = CLAMP(frame, 0, animation->common.frameCount - 1);
+    memcpy(frameTable, (u8*)animation->segment + ((sizeof(Vec3s) * limbCount + 2) * frame),
+           sizeof(Vec3s) * limbCount + 2);
+    return true;
 }
 
 /**
@@ -1090,6 +1172,9 @@ void AnimationContext_Update(PlayState* play, AnimationContext* animationCtx) {
 
     sAnimQueueFlags = 1;
     sDisableAnimQueueFlags = 0;
+
+    // SOH [Enhancement] Modern animation: every pose for this frame is final; work out the drawn ones
+    ModernAnim_FrameEnd(play);
 }
 
 /**
@@ -1107,6 +1192,7 @@ void SkelAnime_InitLink(PlayState* play, SkelAnime* skelAnime, FlexSkeletonHeade
     s32 limbCount;
     size_t allocSize;
 
+    ModernAnim_Forget(skelAnime);
     skelAnime->initFlags = flags;
     limbCount = (flags & 2) ? headerJointCount : 1;
 
@@ -1166,7 +1252,11 @@ void LinkAnimation_SetUpdateFunction(SkelAnime* skelAnime) {
  * finishes.
  */
 s32 LinkAnimation_Update(PlayState* play, SkelAnime* skelAnime) {
-    return skelAnime->update.link(play, skelAnime);
+    s32 ret = skelAnime->update.link(play, skelAnime);
+
+    // SOH [Enhancement] Modern animation: smooth the drawn pose (gameplay keeps this one)
+    ModernAnim_PostUpdate(skelAnime, true);
+    return ret;
 }
 
 /**
@@ -1270,6 +1360,9 @@ void LinkAnimation_Change(PlayState* play, SkelAnime* skelAnime, LinkAnimationHe
     AnimationHeader* currentAnimation = (AnimationHeader*)skelAnime->animation;
     if (ResourceMgr_OTRSigCheck(currentAnimation) != 0)
         currentAnimation = ResourceMgr_LoadAnimByName(currentAnimation);
+
+    // SOH [Enhancement] Modern animation: cross-fade the drawn pose out of an instant animation change
+    ModernAnim_OnChange(skelAnime, animation, currentAnimation, morphFrames, true);
 
     skelAnime->mode = mode;
     if ((morphFrames != 0.0f) && ((animation != currentAnimation) || (startFrame != skelAnime->curFrame))) {
@@ -1454,6 +1547,7 @@ s32 SkelAnime_Init(PlayState* play, SkelAnime* skelAnime, SkeletonHeader* skelet
     SkeletonHeader* skeletonHeader = SEGMENTED_TO_VIRTUAL(skeletonHeaderSeg);
 
     skelAnime->skeletonHeader = skeletonHeader;
+    ModernAnim_Forget(skelAnime);
     skelAnime->limbCount = skeletonHeader->limbCount + 1;
     skelAnime->skeleton = SEGMENTED_TO_VIRTUAL(skeletonHeader->segment);
     if (jointTable == NULL) {
@@ -1486,6 +1580,7 @@ s32 SkelAnime_InitFlex(PlayState* play, SkelAnime* skelAnime, FlexSkeletonHeader
     FlexSkeletonHeader* skeletonHeader = SEGMENTED_TO_VIRTUAL(skeletonHeaderSeg);
 
     skelAnime->skeletonHeader = skeletonHeader;
+    ModernAnim_Forget(skelAnime);
     skelAnime->limbCount = skeletonHeader->sh.limbCount + 1;
     skelAnime->dListCount = skeletonHeader->dListCount;
     skelAnime->skeleton = SEGMENTED_TO_VIRTUAL(skeletonHeader->sh.segment);
@@ -1522,6 +1617,7 @@ s32 SkelAnime_InitSkin(PlayState* play, SkelAnime* skelAnime, SkeletonHeader* sk
     SkeletonHeader* skeletonHeader = SEGMENTED_TO_VIRTUAL(skeletonHeaderSeg);
 
     skelAnime->skeletonHeader = skeletonHeader;
+    ModernAnim_Forget(skelAnime);
     skelAnime->limbCount = skeletonHeader->limbCount + 1;
     skelAnime->skeleton = SEGMENTED_TO_VIRTUAL(skeletonHeader->segment);
     skelAnime->jointTable = ZELDA_ARENA_MALLOC_DEBUG(skelAnime->limbCount * sizeof(*skelAnime->jointTable));
@@ -1556,7 +1652,11 @@ void SkelAnime_SetUpdate(SkelAnime* skelAnime) {
  * finishes.
  */
 s32 SkelAnime_Update(SkelAnime* skelAnime) {
-    return skelAnime->update.normal(skelAnime);
+    s32 ret = skelAnime->update.normal(skelAnime);
+
+    // SOH [Enhancement] Modern animation: smooth the drawn pose (gameplay keeps this one)
+    ModernAnim_PostUpdate(skelAnime, false);
+    return ret;
 }
 
 /**
@@ -1716,6 +1816,9 @@ void Animation_ChangeImpl(SkelAnime* skelAnime, AnimationHeader* animation, f32 
     AnimationHeader* currentAnimation = (AnimationHeader*)skelAnime->animation;
     if (ResourceMgr_OTRSigCheck(currentAnimation) != 0)
         currentAnimation = ResourceMgr_LoadAnimByName(currentAnimation);
+
+    // SOH [Enhancement] Modern animation: cross-fade the drawn pose out of an instant animation change
+    ModernAnim_OnChange(skelAnime, animation, currentAnimation, morphFrames, false);
 
     skelAnime->mode = mode;
     if ((morphFrames != 0.0f) && ((animation != currentAnimation) || (startFrame != skelAnime->curFrame))) {
@@ -1940,6 +2043,7 @@ void SkelAnime_Free(SkelAnime* skelAnime, PlayState* play) {
     }
 
     ResourceMgr_UnregisterSkeleton(skelAnime);
+    ModernAnim_Forget(skelAnime);
 }
 
 /**

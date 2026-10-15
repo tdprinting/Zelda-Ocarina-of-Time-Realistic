@@ -56,7 +56,7 @@
 #include <fast/Fast3dGui.h>
 #include <fast/debug/GfxDebugger.h>
 
-#if not defined(__SWITCH__) && not defined(__WIIU__)
+#if not defined(__SWITCH__) && not defined(__WIIU__) && not defined(__ANDROID__)
 #include "Extractor/Extract.h"
 #endif
 
@@ -123,6 +123,9 @@
 
 #ifdef __WIIU__
 const uint32_t defaultImGuiScale = 3;
+#elif defined(__ANDROID__)
+// 1.5x: menus stay readable and touchable on a 6-7" 1080p handheld screen
+const uint32_t defaultImGuiScale = 2;
 #else
 const uint32_t defaultImGuiScale = 1;
 #endif
@@ -408,6 +411,50 @@ static bool RemoveArchiveAcrossAppDirs(const std::string& fileName) {
     return !std::filesystem::exists(Ship::Context::LocateFileAcrossAppDirs(fileName, appShortName));
 }
 
+#ifdef __ANDROID__
+// The Android launcher copies soh.o2r out of the APK and has the player pick their oot.o2r before
+// the game starts, so there is nothing to extract here. Archives that don't match this build are
+// removed so the launcher asks for new ones on the next start.
+void OTRGlobals::RunExtract(int argc, char* argv[]) {
+    auto wnd = std::dynamic_pointer_cast<Fast::Fast3dWindow>(OTRGlobals::Instance->context->GetWindow());
+    auto gui = wnd->GetGui();
+
+    std::string title;
+    std::string msg;
+    if (!sohArchiveVersionMatch) {
+        title = !std::filesystem::exists(portArchivePath) ? "Missing soh.o2r" : "soh.o2r is outdated";
+        msg = "The game's own soh.o2r is missing or does not match this build.\nReinstall the app and try again.";
+    } else if (VerifyArchiveVersion(DetectOTRVersion("oot.o2r", false)) ||
+               VerifyArchiveVersion(DetectOTRVersion("oot-mq.o2r", true))) {
+        RemoveArchiveAcrossAppDirs("oot.o2r");
+        RemoveArchiveAcrossAppDirs("oot-mq.o2r");
+        title = "Outdated ROM Archives";
+        msg = "Your oot.o2r or oot-mq.o2r was made by an incompatible version of the game.\nMake a new one "
+              "on a PC and pick it when the app starts again.";
+    } else if (!std::filesystem::exists(Ship::Context::LocateFileAcrossAppDirs("oot-mq.o2r", appShortName)) &&
+               !std::filesystem::exists(Ship::Context::LocateFileAcrossAppDirs("oot.o2r", appShortName))) {
+        title = "No ROM Archives";
+        msg = "No oot.o2r or oot-mq.o2r found. Pick one when the app starts again.";
+    } else {
+        CheckAndCreateModFolder();
+        return;
+    }
+
+    SohGui::RegisterPopup(title, msg, "OK", "", [&]() { exit(0); });
+    while (WindowIsRunning()) {
+        wnd->HandleEvents();
+        if (!wnd->IsFrameReady()) {
+            continue;
+        }
+        gui->StartDraw();
+        sohFast3dWindow->StartFrame();
+        sohFast3dWindow->RunGuiOnly();
+        gui->EndDraw();
+        sohFast3dWindow->EndFrame();
+    }
+    exit(0);
+}
+#else
 void OTRGlobals::RunExtract(int argc, char* argv[]) {
     bool extractDone = false;
     ExtractSteps extractStep = ES_PORT_ARCHIVE;
@@ -793,6 +840,7 @@ void OTRGlobals::RunExtract(int argc, char* argv[]) {
     Ship::WiiU::Init(appShortName);
 #endif
 }
+#endif // __ANDROID__
 
 void InitGfxDebugger() {
     auto dbg =
@@ -1478,7 +1526,11 @@ OTRVersion DetectOTRVersion(std::string fileName, bool isMQ) {
 }
 
 extern "C" void Messagebox_ShowErrorBox(char* title, char* body) {
+#ifdef __ANDROID__
+    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, title, body, nullptr);
+#else
     Extractor::ShowErrorBox(title, body);
+#endif
 }
 
 bool VerifyArchiveVersion(OTRVersion version) {
@@ -2192,7 +2244,17 @@ extern "C" void OTRControllerCallback(uint8_t rumble) {
     }
 }
 
+// Aspect ratio that HUD layout uses instead of the window's while a split-screen HUD is drawn (0 = window's)
+static float sHudAspectRatioOverride = 0.0f;
+
+extern "C" void OTRSetHudAspectRatioOverride(float aspectRatio) {
+    sHudAspectRatioOverride = aspectRatio;
+}
+
 extern "C" float OTRGetAspectRatio() {
+    if (sHudAspectRatioOverride > 0.0f) {
+        return sHudAspectRatioOverride;
+    }
     return Ship::Context::GetRawInstance()->GetWindow()->GetAspectRatio();
 }
 
