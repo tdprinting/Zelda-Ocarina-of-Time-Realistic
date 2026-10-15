@@ -62,8 +62,8 @@ Results from `clips.json` (degrees/frame², lower is smoother):
 
 | | transitions | original mean / 90th pct | modern mean / 90th pct |
 |---|---|---|---|
-| Link | 49 | 35.3 / 91.8 | 32.7 / 67.5 |
-| NPCs and enemies | 38 | 30.3 / 91.3 | 20.1 / 45.2 |
+| Link | 48 | 36.0 / 91.8 | 33.4 / 67.5 |
+| NPCs and enemies | 37 | 30.4 / 91.3 | 22.9 / 51.7 |
 
 Link's single largest value rises (127 to 167) at the peak of his first sword swing: sub-frame sampling
 plays the swing at its true even rate instead of the original's alternating 1- and 2-keyframe steps (Link's
