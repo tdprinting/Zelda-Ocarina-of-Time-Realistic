@@ -13,9 +13,12 @@
 #include "soh/ResourceManagerHelpers.h"
 #include "soh/SaveManager.h"
 #include "soh/framebuffer_effects.h"
+#include "soh/Enhancements/ExtraModes/SplitScreenCoop.h"
 
 #include <time.h>
 #include <assert.h>
+
+extern s32 gViewInterpolationSlot;
 
 TransitionUnk sTrnsnUnk;
 s32 gTrnsnUnkState;
@@ -1300,10 +1303,190 @@ void Play_DrawOverlayElements(PlayState* play) {
     }
 }
 
+// SoH: projection, viewing and billboard matrices for the current play->view, split out of Play_Draw so
+// split-screen co-op can apply them once per view
+static void Play_ApplyWorldView(PlayState* play) {
+    GraphicsContext* gfxCtx = play->state.gfxCtx;
+
+    OPEN_DISPS(gfxCtx);
+
+    func_800AA460(&play->view, play->view.fovy, play->view.zNear, play->lightCtx.fogFar);
+    func_800AAA50(&play->view, 15);
+
+    // Flip the projections and invert culling for the OPA and XLU display buffers
+    // These manage the world and effects when we are not drawing kaleido
+    if (R_PAUSE_MENU_MODE <= 1 && CVarGetInteger(CVAR_ENHANCEMENT("MirroredWorld"), 0)) {
+        gSPSetExtraGeometryMode(POLY_OPA_DISP++, G_EX_INVERT_CULLING);
+        gSPSetExtraGeometryMode(POLY_XLU_DISP++, G_EX_INVERT_CULLING);
+        gSPMatrix(POLY_OPA_DISP++, play->view.projectionFlippedPtr, G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_PROJECTION);
+        gSPMatrix(POLY_XLU_DISP++, play->view.projectionFlippedPtr, G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_PROJECTION);
+        gSPMatrix(POLY_OPA_DISP++, play->view.viewingPtr, G_MTX_NOPUSH | G_MTX_MUL | G_MTX_PROJECTION);
+        gSPMatrix(POLY_XLU_DISP++, play->view.viewingPtr, G_MTX_NOPUSH | G_MTX_MUL | G_MTX_PROJECTION);
+    }
+
+    // The billboard matrix temporarily stores the viewing matrix
+    Matrix_MtxToMtxF(&play->view.viewing, &play->billboardMtxF);
+    Matrix_MtxToMtxF(&play->view.projection, &play->viewProjectionMtxF);
+    Matrix_Mult(&play->viewProjectionMtxF, MTXMODE_NEW);
+    // The billboard is still a viewing matrix at this stage
+    Matrix_Mult(&play->billboardMtxF, MTXMODE_APPLY);
+    Matrix_Get(&play->viewProjectionMtxF);
+    play->billboardMtxF.mf[0][3] = play->billboardMtxF.mf[1][3] = play->billboardMtxF.mf[2][3] =
+        play->billboardMtxF.mf[3][0] = play->billboardMtxF.mf[3][1] = play->billboardMtxF.mf[3][2] = 0.0f;
+    // This transpose is where the viewing matrix is properly converted into a billboard matrix
+    Matrix_Transpose(&play->billboardMtxF);
+    play->billboardMtx = Matrix_MtxFToMtx(MATRIX_CHECKFLOATS(&play->billboardMtxF), Graph_Alloc(gfxCtx, sizeof(Mtx)));
+
+    gSPSegment(POLY_OPA_DISP++, 0x01, play->billboardMtx);
+
+    CLOSE_DISPS(gfxCtx);
+}
+
+// SoH: sky, rooms, actors and world effects for the current play->view, split out of Play_Draw so
+// split-screen co-op can draw the world once per view. Per-frame state updates only run on the primary view.
+static void Play_DrawWorld(PlayState* play, bool primaryView) {
+    GraphicsContext* gfxCtx = play->state.gfxCtx;
+    Lights* lights;
+    Vec3f sunPos;
+
+    OPEN_DISPS(gfxCtx);
+
+    if ((HREG(80) != 10) || (HREG(83) != 0)) {
+        if (play->skyboxId && (play->skyboxId != SKYBOX_UNSET_1D) && !play->envCtx.skyboxDisabled) {
+            if ((play->skyboxId == SKYBOX_NORMAL_SKY) || (play->skyboxId == SKYBOX_CUTSCENE_MAP)) {
+                Environment_UpdateSkybox(play, play->skyboxId, &play->envCtx, &play->skyboxCtx);
+                SkyboxDraw_Draw(&play->skyboxCtx, gfxCtx, play->skyboxId, play->envCtx.skyboxBlend, play->view.eye.x,
+                                play->view.eye.y, play->view.eye.z);
+            } else if (play->skyboxCtx.unk_140 == 0) {
+                SkyboxDraw_Draw(&play->skyboxCtx, gfxCtx, play->skyboxId, 0, play->view.eye.x, play->view.eye.y,
+                                play->view.eye.z);
+            }
+        }
+    }
+
+    if ((HREG(80) != 10) || (HREG(90) & 2)) {
+        if (!play->envCtx.sunMoonDisabled) {
+            Environment_DrawSunAndMoon(play);
+        }
+    }
+
+    if ((HREG(80) != 10) || (HREG(90) & 1)) {
+        Environment_DrawSkyboxFilters(play);
+    }
+
+    if ((HREG(80) != 10) || (HREG(90) & 4)) {
+        if (primaryView) {
+            Environment_UpdateLightningStrike(play);
+        }
+        Environment_DrawLightning(play, 0);
+    }
+
+    if ((HREG(80) != 10) || (HREG(90) & 8)) {
+        lights = LightContext_NewLights(&play->lightCtx, gfxCtx);
+        Lights_BindAll(lights, play->lightCtx.listHead, NULL);
+        Lights_Draw(lights, gfxCtx);
+    }
+
+    if ((HREG(80) != 10) || (HREG(84) != 0)) {
+        if (VREG(94) == 0) {
+            s32 roomDrawFlags;
+
+            if (HREG(80) != 10) {
+                roomDrawFlags = 3;
+            } else {
+                roomDrawFlags = HREG(84);
+            }
+            Scene_Draw(play);
+            Room_Draw(play, &play->roomCtx.curRoom, roomDrawFlags & 3);
+            Room_Draw(play, &play->roomCtx.prevRoom, roomDrawFlags & 3);
+        }
+    }
+
+    if ((HREG(80) != 10) || (HREG(83) != 0)) {
+        if ((play->skyboxCtx.unk_140 != 0) && (GET_ACTIVE_CAM(play)->setting != CAM_SET_PREREND_FIXED)) {
+            Vec3f quakeOffset;
+
+            Camera_GetSkyboxOffset(&quakeOffset, GET_ACTIVE_CAM(play));
+            SkyboxDraw_Draw(&play->skyboxCtx, gfxCtx, play->skyboxId, 0, play->view.eye.x + quakeOffset.x,
+                            play->view.eye.y + quakeOffset.y, play->view.eye.z + quakeOffset.z);
+        }
+    }
+
+    if (play->envCtx.unk_EE[1] != 0) {
+        Environment_DrawRain(play, &play->view, gfxCtx);
+    }
+
+    if ((HREG(80) != 10) || (HREG(84) != 0)) {
+        Environment_FillScreen(gfxCtx, 0, 0, 0, play->bgCoverAlpha, FILL_SCREEN_OPA);
+    }
+
+    if ((HREG(80) != 10) || (HREG(85) != 0)) {
+        Actor_DrawAll(play, &play->actorCtx);
+    }
+
+    if ((HREG(80) != 10) || (HREG(86) != 0)) {
+        if (!play->envCtx.sunMoonDisabled) {
+            sunPos.x = play->view.eye.x + play->envCtx.sunPos.x;
+            sunPos.y = play->view.eye.y + play->envCtx.sunPos.y;
+            sunPos.z = play->view.eye.z + play->envCtx.sunPos.z;
+            Environment_DrawSunLensFlare(play, &play->envCtx, &play->view, gfxCtx, sunPos, 0);
+        }
+        Environment_DrawCustomLensFlare(play);
+    }
+
+    if ((HREG(80) != 10) || (HREG(87) != 0)) {
+        if (MREG(64) != 0) {
+            Environment_FillScreen(gfxCtx, MREG(65), MREG(66), MREG(67), MREG(68), FILL_SCREEN_OPA | FILL_SCREEN_XLU);
+        }
+
+        switch (play->envCtx.fillScreen) {
+            case 1:
+                Environment_FillScreen(gfxCtx, play->envCtx.screenFillColor[0], play->envCtx.screenFillColor[1],
+                                       play->envCtx.screenFillColor[2], play->envCtx.screenFillColor[3],
+                                       FILL_SCREEN_OPA | FILL_SCREEN_XLU);
+                break;
+            default:
+                break;
+        }
+    }
+
+    if ((HREG(80) != 10) || (HREG(88) != 0)) {
+        if (play->envCtx.sandstormState != SANDSTORM_OFF) {
+            Environment_DrawSandstorm(play, play->envCtx.sandstormState);
+        }
+    }
+
+    if ((HREG(80) != 10) || (HREG(93) != 0)) {
+        DebugDisplay_DrawObjects(play);
+    }
+
+    CLOSE_DISPS(gfxCtx);
+}
+
+// SoH [Co-op] Draws Player 2's half of the screen, then puts play->view back to Player 1's full-screen view
+static void Play_DrawCoopView(PlayState* play, Viewport* fullViewport) {
+    View p1View = play->view;
+    Viewport viewport;
+
+    Coop_GetSplitViewport(1, &viewport);
+    View_SetViewport(&play->view, &viewport);
+    Coop_ApplyPlayer2Camera(&play->view);
+    gViewInterpolationSlot = 1;
+    Play_ApplyWorldView(play);
+    Play_DrawWorld(play, false);
+
+    play->view = p1View;
+    View_SetViewport(&play->view, fullViewport);
+    gViewInterpolationSlot = 2;
+    Play_ApplyWorldView(play);
+    gViewInterpolationSlot = 0;
+}
+
 void Play_Draw(PlayState* play) {
     GraphicsContext* gfxCtx = play->state.gfxCtx;
-    Lights* sp228;
-    Vec3f sp21C;
+    bool coopSplit = false;
+    Viewport fullViewport;
+    Viewport splitViewport;
 
     // #region SOH [Port] Frame buffer effects for pause menu
     // Track render size when paused and that a copy was performed
@@ -1354,35 +1537,15 @@ void Play_Draw(PlayState* play) {
         POLY_OPA_DISP = Play_SetFog(play, POLY_OPA_DISP);
         POLY_XLU_DISP = Play_SetFog(play, POLY_XLU_DISP);
 
-        func_800AA460(&play->view, play->view.fovy, play->view.zNear, play->lightCtx.fogFar);
-        func_800AAA50(&play->view, 15);
-
-        // Flip the projections and invert culling for the OPA and XLU display buffers
-        // These manage the world and effects when we are not drawing kaleido
-        if (R_PAUSE_MENU_MODE <= 1 && CVarGetInteger(CVAR_ENHANCEMENT("MirroredWorld"), 0)) {
-            gSPSetExtraGeometryMode(POLY_OPA_DISP++, G_EX_INVERT_CULLING);
-            gSPSetExtraGeometryMode(POLY_XLU_DISP++, G_EX_INVERT_CULLING);
-            gSPMatrix(POLY_OPA_DISP++, play->view.projectionFlippedPtr, G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_PROJECTION);
-            gSPMatrix(POLY_XLU_DISP++, play->view.projectionFlippedPtr, G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_PROJECTION);
-            gSPMatrix(POLY_OPA_DISP++, play->view.viewingPtr, G_MTX_NOPUSH | G_MTX_MUL | G_MTX_PROJECTION);
-            gSPMatrix(POLY_XLU_DISP++, play->view.viewingPtr, G_MTX_NOPUSH | G_MTX_MUL | G_MTX_PROJECTION);
+        // SoH [Co-op] In split-screen co-op, Player 1's view takes the first half of the screen
+        coopSplit = Coop_IsSplitScreenActive(play) && (R_PAUSE_MENU_MODE == 0) && (gTrnsnUnkState == 0);
+        if (coopSplit) {
+            fullViewport = play->view.viewport;
+            Coop_GetSplitViewport(0, &splitViewport);
+            View_SetViewport(&play->view, &splitViewport);
         }
 
-        // The billboard matrix temporarily stores the viewing matrix
-        Matrix_MtxToMtxF(&play->view.viewing, &play->billboardMtxF);
-        Matrix_MtxToMtxF(&play->view.projection, &play->viewProjectionMtxF);
-        Matrix_Mult(&play->viewProjectionMtxF, MTXMODE_NEW);
-        // The billboard is still a viewing matrix at this stage
-        Matrix_Mult(&play->billboardMtxF, MTXMODE_APPLY);
-        Matrix_Get(&play->viewProjectionMtxF);
-        play->billboardMtxF.mf[0][3] = play->billboardMtxF.mf[1][3] = play->billboardMtxF.mf[2][3] =
-            play->billboardMtxF.mf[3][0] = play->billboardMtxF.mf[3][1] = play->billboardMtxF.mf[3][2] = 0.0f;
-        // This transpose is where the viewing matrix is properly converted into a billboard matrix
-        Matrix_Transpose(&play->billboardMtxF);
-        play->billboardMtx =
-            Matrix_MtxFToMtx(MATRIX_CHECKFLOATS(&play->billboardMtxF), Graph_Alloc(gfxCtx, sizeof(Mtx)));
-
-        gSPSegment(POLY_OPA_DISP++, 0x01, play->billboardMtx);
+        Play_ApplyWorldView(play);
 
         if ((HREG(80) != 10) || (HREG(92) != 0)) {
             Gfx* gfxP;
@@ -1452,113 +1615,7 @@ void Play_Draw(PlayState* play) {
             goto Play_Draw_DrawOverlayElements;
         }
 
-        if ((HREG(80) != 10) || (HREG(83) != 0)) {
-            if (play->skyboxId && (play->skyboxId != SKYBOX_UNSET_1D) && !play->envCtx.skyboxDisabled) {
-                if ((play->skyboxId == SKYBOX_NORMAL_SKY) || (play->skyboxId == SKYBOX_CUTSCENE_MAP)) {
-                    Environment_UpdateSkybox(play, play->skyboxId, &play->envCtx, &play->skyboxCtx);
-                    SkyboxDraw_Draw(&play->skyboxCtx, gfxCtx, play->skyboxId, play->envCtx.skyboxBlend,
-                                    play->view.eye.x, play->view.eye.y, play->view.eye.z);
-                } else if (play->skyboxCtx.unk_140 == 0) {
-                    SkyboxDraw_Draw(&play->skyboxCtx, gfxCtx, play->skyboxId, 0, play->view.eye.x, play->view.eye.y,
-                                    play->view.eye.z);
-                }
-            }
-        }
-
-        if ((HREG(80) != 10) || (HREG(90) & 2)) {
-            if (!play->envCtx.sunMoonDisabled) {
-                Environment_DrawSunAndMoon(play);
-            }
-        }
-
-        if ((HREG(80) != 10) || (HREG(90) & 1)) {
-            Environment_DrawSkyboxFilters(play);
-        }
-
-        if ((HREG(80) != 10) || (HREG(90) & 4)) {
-            Environment_UpdateLightningStrike(play);
-            Environment_DrawLightning(play, 0);
-        }
-
-        if ((HREG(80) != 10) || (HREG(90) & 8)) {
-            sp228 = LightContext_NewLights(&play->lightCtx, gfxCtx);
-            Lights_BindAll(sp228, play->lightCtx.listHead, NULL);
-            Lights_Draw(sp228, gfxCtx);
-        }
-
-        if ((HREG(80) != 10) || (HREG(84) != 0)) {
-            if (VREG(94) == 0) {
-                s32 roomDrawFlags;
-
-                if (HREG(80) != 10) {
-                    roomDrawFlags = 3;
-                } else {
-                    roomDrawFlags = HREG(84);
-                }
-                Scene_Draw(play);
-                Room_Draw(play, &play->roomCtx.curRoom, roomDrawFlags & 3);
-                Room_Draw(play, &play->roomCtx.prevRoom, roomDrawFlags & 3);
-            }
-        }
-
-        if ((HREG(80) != 10) || (HREG(83) != 0)) {
-            if ((play->skyboxCtx.unk_140 != 0) && (GET_ACTIVE_CAM(play)->setting != CAM_SET_PREREND_FIXED)) {
-                Vec3f quakeOffset;
-
-                Camera_GetSkyboxOffset(&quakeOffset, GET_ACTIVE_CAM(play));
-                SkyboxDraw_Draw(&play->skyboxCtx, gfxCtx, play->skyboxId, 0, play->view.eye.x + quakeOffset.x,
-                                play->view.eye.y + quakeOffset.y, play->view.eye.z + quakeOffset.z);
-            }
-        }
-
-        if (play->envCtx.unk_EE[1] != 0) {
-            Environment_DrawRain(play, &play->view, gfxCtx);
-        }
-
-        if ((HREG(80) != 10) || (HREG(84) != 0)) {
-            Environment_FillScreen(gfxCtx, 0, 0, 0, play->bgCoverAlpha, FILL_SCREEN_OPA);
-        }
-
-        if ((HREG(80) != 10) || (HREG(85) != 0)) {
-            Actor_DrawAll(play, &play->actorCtx);
-        }
-
-        if ((HREG(80) != 10) || (HREG(86) != 0)) {
-            if (!play->envCtx.sunMoonDisabled) {
-                sp21C.x = play->view.eye.x + play->envCtx.sunPos.x;
-                sp21C.y = play->view.eye.y + play->envCtx.sunPos.y;
-                sp21C.z = play->view.eye.z + play->envCtx.sunPos.z;
-                Environment_DrawSunLensFlare(play, &play->envCtx, &play->view, gfxCtx, sp21C, 0);
-            }
-            Environment_DrawCustomLensFlare(play);
-        }
-
-        if ((HREG(80) != 10) || (HREG(87) != 0)) {
-            if (MREG(64) != 0) {
-                Environment_FillScreen(gfxCtx, MREG(65), MREG(66), MREG(67), MREG(68),
-                                       FILL_SCREEN_OPA | FILL_SCREEN_XLU);
-            }
-
-            switch (play->envCtx.fillScreen) {
-                case 1:
-                    Environment_FillScreen(gfxCtx, play->envCtx.screenFillColor[0], play->envCtx.screenFillColor[1],
-                                           play->envCtx.screenFillColor[2], play->envCtx.screenFillColor[3],
-                                           FILL_SCREEN_OPA | FILL_SCREEN_XLU);
-                    break;
-                default:
-                    break;
-            }
-        }
-
-        if ((HREG(80) != 10) || (HREG(88) != 0)) {
-            if (play->envCtx.sandstormState != SANDSTORM_OFF) {
-                Environment_DrawSandstorm(play, play->envCtx.sandstormState);
-            }
-        }
-
-        if ((HREG(80) != 10) || (HREG(93) != 0)) {
-            DebugDisplay_DrawObjects(play);
-        }
+        Play_DrawWorld(play, true);
 
         if ((R_PAUSE_MENU_MODE == 1) || (gTrnsnUnkState == 1)) {
             Gfx* gfxP = OVERLAY_DISP;
@@ -1603,6 +1660,10 @@ void Play_Draw(PlayState* play) {
         // Draw Enhancements that need to be placed in the world. This happens before the PostWorldDraw
         // so that they aren't drawn when the pause menu is up (e.g. collision viewer, actor name tags)
         GameInteractor_ExecuteOnPlayDrawEnd();
+
+        if (coopSplit) {
+            Play_DrawCoopView(play, &fullViewport);
+        }
 
     Play_Draw_DrawOverlayElements:
         if ((HREG(80) != 10) || (HREG(89) != 0)) {

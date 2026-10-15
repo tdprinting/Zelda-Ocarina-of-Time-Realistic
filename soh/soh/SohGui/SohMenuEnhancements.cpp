@@ -166,6 +166,11 @@ static const std::map<int32_t, const char*> swordToggleModes = {
     { SWORD_TOGGLE_BOTH_AGES, "Both Ages" },
 };
 
+static const std::map<int32_t, const char*> coopSplitLayouts = {
+    { 0, "Side by Side" },
+    { 1, "Top and Bottom" },
+};
+
 static const std::map<int32_t, const char*> mirroredWorldModes = {
     { MIRRORED_WORLD_OFF, "Disabled" },
     { MIRRORED_WORLD_ALWAYS, "Always" },
@@ -1862,6 +1867,28 @@ void SohMenu::AddMenuEnhancements() {
         .Options(CheckboxOptions().Tooltip(
             "Enables Ivan the Fairy. Player 2 can control Ivan and press the C-Buttons to use items and mess with "
             "Player 1!"));
+    AddWidget(path, "Split-Screen Co-op", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_ENHANCEMENT("SplitScreenCoop.Enabled"))
+        .Options(CheckboxOptions().Tooltip(
+            "Adds a second Link controlled by the controller in port 2. Both players share items, rupees and "
+            "hearts. Player 1 leads through doors, loading zones and cutscenes; Player 2 is brought back to "
+            "Player 1 when they fall out or get too far away."));
+    AddWidget(path, "Co-op Screen Layout", WIDGET_CVAR_COMBOBOX)
+        .CVar(CVAR_ENHANCEMENT("SplitScreenCoop.Layout"))
+        .PreFunc([](WidgetInfo& info) {
+            info.isHidden = CVarGetInteger(CVAR_ENHANCEMENT("SplitScreenCoop.Enabled"), 0) == 0;
+        })
+        .Options(ComboboxOptions()
+                     .DefaultIndex(0)
+                     .ComboMap(coopSplitLayouts)
+                     .Tooltip("How the screen is split between the two players."));
+    AddWidget(path, "Co-op Leash Distance: %d", WIDGET_CVAR_SLIDER_INT)
+        .CVar(CVAR_ENHANCEMENT("SplitScreenCoop.LeashDistance"))
+        .PreFunc([](WidgetInfo& info) {
+            info.isHidden = CVarGetInteger(CVAR_ENHANCEMENT("SplitScreenCoop.Enabled"), 0) == 0;
+        })
+        .Options(IntSliderOptions().Min(0).Max(6000).DefaultValue(2000).Tooltip(
+            "How far Player 2 can get from Player 1 before being pulled back. 0 turns the leash off."));
     AddWidget(path, "Dogs Follow You Everywhere", WIDGET_CVAR_CHECKBOX)
         .CVar(CVAR_ENHANCEMENT("DogFollowsEverywhere"))
         .Options(CheckboxOptions().Tooltip("Allows dogs to follow you anywhere you go, even if you leave the Market."));

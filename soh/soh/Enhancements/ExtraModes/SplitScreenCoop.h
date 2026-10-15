@@ -1,0 +1,37 @@
+#pragma once
+
+// Local split-screen co-op: a second, fully simulated Link driven by controller port 2.
+//
+// Player 2 is a real Player actor that lives at the tail of the ACTORCAT_PLAYER list, so GET_PLAYER()
+// keeps returning Player 1 for the rest of the game. While Player 2 updates or draws, the module swaps
+// "the player" context (list head, controller port, main camera) so the stock z_player.c code runs
+// unmodified for Player 2. See docs/split-screen-coop.md for the design.
+
+#include "z64.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+// True when the co-op setting is on, whether or not Player 2 is currently spawned.
+int Coop_IsEnabled(void);
+
+// Player 2, or NULL when co-op is off or Player 2 is not in the current scene.
+Player* Coop_GetPlayer2(void);
+
+// Player 2's camera, or NULL when there is none. Only meaningful while Coop_GetPlayer2() is non-NULL.
+Camera* Coop_GetPlayer2Camera(void);
+
+// True when this frame should be drawn as two views: co-op is on, Player 2 is present and neither player is
+// in a cutscene or scene transition.
+int Coop_IsSplitScreenActive(PlayState* play);
+
+// The screen area for view 0 (Player 1) or view 1 (Player 2), in the game's 320x240 coordinates.
+void Coop_GetSplitViewport(int viewIndex, Viewport* viewport);
+
+// Points the view at Player 2's camera (eye, look-at, up, field of view) as of the last camera update.
+void Coop_ApplyPlayer2Camera(View* view);
+
+#ifdef __cplusplus
+}
+#endif

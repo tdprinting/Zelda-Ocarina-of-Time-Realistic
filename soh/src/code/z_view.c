@@ -7,6 +7,9 @@
 
 #include "soh/frame_interpolation.h"
 
+// SoH [Co-op] Which of the frame's views is being applied (0 = main view); see Play_DrawCoopView
+s32 gViewInterpolationSlot = 0;
+
 vu32 D_8012ABF0 = true;
 
 void View_ViewportToVp(Vp* dest, Viewport* src) {
@@ -338,7 +341,9 @@ s32 func_800AAA9C(View* view) {
 
     // Some heuristics to identify instant camera movements and skip interpolation in that case
 
-    static View old_view;
+    // SoH [Co-op] One history per view drawn in a frame, so split-screen views are not compared to each other
+    static View old_views[3];
+    View* old_view = &old_views[CLAMP(gViewInterpolationSlot, 0, ARRAY_COUNT(old_views) - 1)];
 
     float dirx = view->eye.x - view->lookAt.x;
     float diry = view->eye.y - view->lookAt.y;
@@ -348,20 +353,20 @@ s32 func_800AAA9C(View* view) {
     diry /= dir_dist;
     dirz /= dir_dist;
 
-    float odirx = old_view.eye.x - old_view.lookAt.x;
-    float odiry = old_view.eye.y - old_view.lookAt.y;
-    float odirz = old_view.eye.z - old_view.lookAt.z;
+    float odirx = old_view->eye.x - old_view->lookAt.x;
+    float odiry = old_view->eye.y - old_view->lookAt.y;
+    float odirz = old_view->eye.z - old_view->lookAt.z;
     float odir_dist = sqrtf(sqr(odirx) + sqr(odiry) + sqr(odirz));
     odirx /= odir_dist;
     odiry /= odir_dist;
     odirz /= odir_dist;
 
-    float eye_dist = sqrtf(sqr(view->eye.x - old_view.eye.x) + sqr(view->eye.y - old_view.eye.y) +
-                           sqr(view->eye.z - old_view.eye.z));
-    float look_dist = sqrtf(sqr(view->lookAt.x - old_view.lookAt.x) + sqr(view->lookAt.y - old_view.lookAt.y) +
-                            sqr(view->lookAt.z - old_view.lookAt.z));
+    float eye_dist = sqrtf(sqr(view->eye.x - old_view->eye.x) + sqr(view->eye.y - old_view->eye.y) +
+                           sqr(view->eye.z - old_view->eye.z));
+    float look_dist = sqrtf(sqr(view->lookAt.x - old_view->lookAt.x) + sqr(view->lookAt.y - old_view->lookAt.y) +
+                            sqr(view->lookAt.z - old_view->lookAt.z));
     float up_dist =
-        sqrtf(sqr(view->up.x - old_view.up.x) + sqr(view->up.y - old_view.up.y) + sqr(view->up.z - old_view.up.z));
+        sqrtf(sqr(view->up.x - old_view->up.x) + sqr(view->up.y - old_view->up.y) + sqr(view->up.z - old_view->up.z));
     float d_dist = sqrtf(sqr(dirx - odirx) + sqr(diry - odiry) + sqr(dirz - odirz));
 
     bool dont_interpolate = false;
@@ -460,7 +465,7 @@ s32 func_800AAA9C(View* view) {
        view->eye.z, view->lookAt.x, view->lookAt.y, view->lookAt.z, view->up.x, view->up.y, view->up.z, eye_dist,
        look_dist, up_dist, d_dist, dont_interpolate);*/
 
-    old_view = *view;
+    *old_view = *view;
 
     if (QREG(88) & 2) {
         s32 i;
