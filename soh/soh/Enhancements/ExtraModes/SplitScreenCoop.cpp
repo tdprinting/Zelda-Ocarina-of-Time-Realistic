@@ -318,6 +318,20 @@ static void CoopPlayer_Update(Actor* thisx, PlayState* play) {
 
     Coop_EndSwap(swap);
 
+    // The message box reads controller 1. While Player 2 is the one talking, Player 2's buttons also count,
+    // so Player 2 can read and answer its own conversation. Player 1 has already updated this frame.
+    if ((sP2->stateFlags1 & PLAYER_STATE1_TALKING) && !(p1->stateFlags1 & PLAYER_STATE1_TALKING)) {
+        Input* p1Input = &play->state.input[0];
+        const Input* p2Input = &play->state.input[COOP_P2_PORT];
+        p1Input->cur.button |= p2Input->cur.button;
+        p1Input->press.button |= p2Input->press.button;
+        p1Input->rel.button |= p2Input->rel.button;
+        if (p1Input->rel.stick_x == 0 && p1Input->rel.stick_y == 0) {
+            p1Input->rel.stick_x = p2Input->rel.stick_x;
+            p1Input->rel.stick_y = p2Input->rel.stick_y;
+        }
+    }
+
     if (Coop_RestoreSnapshot(play, &snap)) {
         // Player 2 fell out or walked into an exit: scene changes are Player 1's call, so pull
         // Player 2 back instead. A void out still costs a heart, as it does for Player 1.
@@ -366,13 +380,39 @@ static void Coop_UpdateP2Camera(PlayState* play) {
 
 // #endregion
 
-// #region Enemies see both players
+// #region The world sees both players
 
-// Enemies aim at GET_PLAYER(). For each enemy whose nearer target is Player 2, Player 2 is made "the
-// player" for the duration of that enemy's update, so its AI, attacks and grabs go after Player 2.
-// Bosses stay on Player 1: their intros and death sequences drive Player 1's cutscene state.
+// Actors aim at, talk to and hand items to GET_PLAYER(). For enemies, NPCs and a few pick-up-able objects
+// whose nearer player is Player 2, Player 2 is made "the player" for the duration of that actor's update, so
+// enemy AI and attacks go after Player 2, and Player 2 can talk to NPCs, collect drops and lift pots.
+// Bosses, doors and chests stay on Player 1: they drive cutscenes, room changes and item-get sequences
+// that the rest of the game expects Player 1 to be in.
 static Actor* sTargetSwapActor = nullptr;
-static std::unordered_set<Actor*> sEnemiesTargetingP2;
+static std::unordered_set<Actor*> sActorsTargetingP2;
+
+static bool Coop_ActorSeesBothPlayers(Actor* actor) {
+    if ((actor->category == ACTORCAT_ENEMY) || (actor->category == ACTORCAT_NPC)) {
+        return true;
+    }
+    switch (actor->id) {
+        case ACTOR_EN_ITEM00: // Rupees, hearts, ammo and other drops
+        case ACTOR_EN_SI:     // Gold Skulltula tokens
+        case ACTOR_OBJ_TSUBO: // Pots
+        case ACTOR_EN_KUSA:   // Bushes
+        case ACTOR_EN_ISHI:   // Rocks
+        case ACTOR_OBJ_KIBAKO:
+        case ACTOR_OBJ_KIBAKO2: // Crates
+        case ACTOR_EN_KANBAN:   // Signs
+        case ACTOR_EN_NIW:      // Cuccos
+            return true;
+    }
+    return false;
+}
+
+static bool Coop_IsBoundToPlayer(Actor* actor, Player* player) {
+    return (player->talkActor == actor) || (player->heldActor == actor) || (actor->parent == &player->actor) ||
+           (player->naviActor == actor);
+}
 
 static void Coop_EndTargetSwap(PlayState* play) {
     if (sTargetSwapActor == nullptr) {
@@ -394,25 +434,28 @@ static void Coop_OnShouldActorUpdate(void* actorRef, bool* should) {
 
     Coop_EndTargetSwap(play);
 
-    if (!*should || (actor->category != ACTORCAT_ENEMY) || (Coop_GetPlayer2() == nullptr) || sP2Suspended ||
-        Coop_ShouldSuspendP2(play) || (sP2->stateFlags1 & PLAYER_STATE1_DEAD)) {
-        sEnemiesTargetingP2.erase(actor);
+    if (!*should || !Coop_ActorSeesBothPlayers(actor) || (Coop_GetPlayer2() == nullptr) || sP2Suspended ||
+        Coop_ShouldSuspendP2(play) || (sP2->stateFlags1 & PLAYER_STATE1_DEAD) ||
+        Coop_IsBoundToPlayer(actor, GET_PLAYER(play))) {
+        sActorsTargetingP2.erase(actor);
         return;
     }
 
     f32 p2XZ = Actor_WorldDistXZToActor(actor, &sP2->actor);
     f32 p2Y = Actor_HeightDiff(actor, &sP2->actor);
     f32 p2DistSq = SQ(p2XZ) + SQ(p2Y);
-    bool wasTargetingP2 = sEnemiesTargetingP2.count(actor) != 0;
+    bool wasTargetingP2 = sActorsTargetingP2.count(actor) != 0;
 
-    // Only switch targets when the other player is clearly closer, so enemies don't flip-flop.
+    // Only switch players when the other one is clearly closer, so actors don't flip-flop. An actor Player 2
+    // is talking to, carrying or riding stays with Player 2.
     bool targetP2 =
-        wasTargetingP2 ? (actor->xyzDistToPlayerSq * 0.64f >= p2DistSq) : (p2DistSq < actor->xyzDistToPlayerSq * 0.64f);
+        Coop_IsBoundToPlayer(actor, sP2) || (wasTargetingP2 ? (actor->xyzDistToPlayerSq * 0.64f >= p2DistSq)
+                                                            : (p2DistSq < actor->xyzDistToPlayerSq * 0.64f));
     if (!targetP2) {
-        sEnemiesTargetingP2.erase(actor);
+        sActorsTargetingP2.erase(actor);
         return;
     }
-    sEnemiesTargetingP2.insert(actor);
+    sActorsTargetingP2.insert(actor);
 
     actor->xzDistToPlayer = p2XZ;
     actor->yDistToPlayer = p2Y;
@@ -544,7 +587,7 @@ static void RegisterSplitScreenCoop() {
         sP2 = nullptr;
         sP2CameraReady = false;
         sTargetSwapActor = nullptr;
-        sEnemiesTargetingP2.clear();
+        sActorsTargetingP2.clear();
     });
     COND_HOOK(ShouldActorUpdate, CVAR_COOP_VALUE, Coop_OnShouldActorUpdate);
     COND_HOOK(OnActorUpdate, CVAR_COOP_VALUE, [](void* actor) {
