@@ -27,14 +27,10 @@ Turn it on under **Enhancements > Extra Modes > Split-Screen Co-op**. Settings:
   and lift and throw things.
 - Each half has its own HUD. Hearts, magic, rupees and the item buttons are shared, so they match; the A
   button shows each player's own action and the minimap arrow shows each player's own position.
-- **START opens a small menu in that player's half without pausing the game.** The other player keeps
-  playing; only the player with the menu open stops. Controls in the menu:
-  - Stick or D-pad: move the cursor.
-  - C-left, C-down, C-right (items page): put the item on that C button.
-  - A (gear page): equip that sword, shield, tunic or boots.
-  - R: switch between the items and gear pages.
-  - Z: open the full pause screen (map, quest status, save). This pauses both players as usual.
-  - B or START: close.
+- **START opens the normal pause menu, shrunk into that player's half.** It keeps its usual 4:3 shape and
+  works exactly as in single player (items, equipment, map, quest status, saving). While one player has it
+  open the game keeps running: the other player keeps playing and only the player in the menu stands still.
+  When both players have the menu open, the game pauses.
 
   Items and gear are shared, so a change from either menu applies to both Links.
 
@@ -97,12 +93,29 @@ For Player 2's pass, the interface context is pointed at Player 2's own A-button
 label, which Player 2's update sets, and its flip animation) and Player 2 is made "the player" for the
 minimap arrow.
 
-### Per-player menu
+### Per-player pause menu
 
-The co-op menu runs from the `OnGameStateMainStart` hook, after the controllers are read and before the
-play update. A player's START opens their menu; while it is open, that player's controller input is
-consumed by the menu and cleared before gameplay sees it, so their Link stands still while everything else
-keeps running. Z hands a START press to Player 1's controller so the stock pause screen opens.
+Each player has their own copy of the stock pause menu (Kaleido). Play_Update calls `Coop_UpdatePauseSetup`
+where it would open the pause menu and `Coop_UpdatePauseMenus` where it would update it. The pause menu code
+works on `play->pauseCtx`, the REG pages, the HUD visibility and button state in the save context, the
+A-button label and controller port 0, so each menu keeps its own copy of all of those and swaps them in
+around every call into the pause menu (and makes Player 2 "the player" for Player 2's menu). The world's own
+`pauseCtx` stays closed, so actors keep updating; when both menus are open, Play_Update treats the game as
+paused and the sound pauses as usual.
+
+- Input: an open menu takes its player's controller at the start of the frame (`OnGameStateMainStart`), so
+  gameplay sees nothing from it.
+- Speed: the pause menu normally runs at 30 Hz while the game is paused. Here the game keeps its 20 Hz, so
+  each menu runs three updates every two frames (button presses count once) to keep its usual speed.
+- Background: the stock menu waits for a capture of the frozen frame as its background. Co-op skips that
+  step and the live game keeps drawing in the half around the menu.
+- Drawing: `Coop_DrawHuds` draws the menu in the largest 4:3 area of the player's half (centered), using the
+  HUD region so its 3D pages, text and icons scale together without stretching, then that player's HUD on
+  top as in single player. The menu's display list is redirected to the overlay list so it draws on top of
+  both views.
+- The pause-screen Link is built in a buffer per menu instead of at the start of the object bank, so the two
+  menus don't share it and the running game's object memory is left alone.
+- If the split screen ends (a cutscene, a transition, a game over), open menus are closed at once.
 
 ### Other engine changes
 

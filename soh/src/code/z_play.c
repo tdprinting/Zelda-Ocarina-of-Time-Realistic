@@ -1109,13 +1109,18 @@ void Play_Update(PlayState* play) {
         if (1 && (gTrnsnUnkState != 3)) {
             PLAY_LOG(3542);
 
-            if ((gSaveContext.gameMode == GAMEMODE_NORMAL) && (play->msgCtx.msgMode == MSGMODE_NONE) &&
-                (play->gameOverCtx.state == GAMEOVER_INACTIVE)) {
-                KaleidoSetup_Update(play);
-            }
+            // SoH [Co-op] In split-screen co-op each player has their own pause menu, and the game only
+            // pauses while both are open
+            isPaused = Coop_UpdatePauseSetup(play);
+            if (isPaused < 0) {
+                if ((gSaveContext.gameMode == GAMEMODE_NORMAL) && (play->msgCtx.msgMode == MSGMODE_NONE) &&
+                    (play->gameOverCtx.state == GAMEOVER_INACTIVE)) {
+                    KaleidoSetup_Update(play);
+                }
 
-            PLAY_LOG(3551);
-            isPaused = (play->pauseCtx.state != 0) || (play->pauseCtx.debugState != 0);
+                PLAY_LOG(3551);
+                isPaused = (play->pauseCtx.state != 0) || (play->pauseCtx.debugState != 0);
+            }
 
             PLAY_LOG(3555);
             AnimationContext_Reset(&play->animationCtx);
@@ -1225,6 +1230,8 @@ void Play_Update(PlayState* play) {
             SkyboxDraw_Update(&play->skyboxCtx);
 
             PLAY_LOG(3716);
+
+            Coop_UpdatePauseMenus(play);
 
             if ((play->pauseCtx.state != 0) || (play->pauseCtx.debugState != 0)) {
                 PLAY_LOG(3721);

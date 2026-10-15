@@ -32,9 +32,15 @@ void Coop_GetSplitViewport(int viewIndex, Viewport* viewport);
 // Points the view at Player 2's camera (eye, look-at, up, field of view) as of the last camera update.
 void Coop_ApplyPlayer2Camera(View* view);
 
-// Draws the HUD (and any open co-op menu) once in each player's half. Used instead of Interface_Draw on
+// Draws the HUD (and any open pause menu) once in each player's half. Used instead of Interface_Draw on
 // split-screen frames.
 void Coop_DrawHuds(PlayState* play);
+
+// Each player's own pause menu. Coop_UpdatePauseSetup runs where Play_Update opens the pause menu: it returns
+// -1 when the single-player pause menu is in charge this frame, otherwise whether the game is paused (both
+// players' menus open). Coop_UpdatePauseMenus runs where Play_Update updates the pause menu.
+int Coop_UpdatePauseSetup(PlayState* play);
+void Coop_UpdatePauseMenus(PlayState* play);
 
 #ifdef __cplusplus
 }
