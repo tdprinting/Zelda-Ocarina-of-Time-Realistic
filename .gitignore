@@ -465,3 +465,6 @@ soh/properties.h
 # Headless render test captures (may contain game imagery)
 render-test-output/
 anim-test-output/
+
+# the Android launcher icon is source, not a generated image
+!Android/app/src/main/res/**/*.png

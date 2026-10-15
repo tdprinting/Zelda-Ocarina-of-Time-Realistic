@@ -1,0 +1,69 @@
+name: android
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  NDK_VERSION: 28.2.13676358
+  SDK_CMAKE_VERSION: 4.1.2
+jobs:
+  build-android:
+    runs-on: ubuntu-24.04
+    steps:
+    - name: Git Checkout
+      uses: actions/checkout@v7
+      with:
+        submodules: true
+    - name: Install host dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y $(cat linux-build-deps/apt.txt)
+    - name: Set up Java
+      uses: actions/setup-java@v5
+      with:
+        distribution: temurin
+        java-version: 17
+    - name: Install NDK and CMake
+      run: |
+        yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+        "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION" "cmake;$SDK_CMAKE_VERSION" "platforms;android-35"
+    - name: Configure ccache
+      uses: hendrikmuhs/ccache-action@v1.2.23
+      with:
+        max-size: "2G"
+        evict-old-files: job
+        key: android-ccache-${{ github.ref }}-${{ github.sha }}
+        restore-keys: |
+          android-ccache-${{ github.ref }}
+          android-ccache
+    - name: Build APK
+      run: |
+        export CMAKE_C_COMPILER_LAUNCHER=ccache CMAKE_CXX_COMPILER_LAUNCHER=ccache
+        Android/build-apk.sh release
+    - name: Check the APK has no game assets
+      run: |
+        # soh.o2r is the port's own assets; anything else ROM-derived must never ship
+        found=$(unzip -Z1 Android/app/build/outputs/apk/release/*.apk | grep -Ei '\.(o2r|otr|z64|n64|v64)$' | grep -vx 'assets/soh.o2r' || true)
+        if [ -n "$found" ]; then
+          echo "::error::APK contains ROM-derived files: $found"
+          exit 1
+        fi
+    - name: Package
+      run: |
+        mkdir dist
+        cp Android/app/build/outputs/apk/release/*.apk dist/zoot-realistic-android-arm64.apk
+        cat > dist/TEST-BUILD.txt <<TXT
+        Android test build for the AYN Odin 2 Portal (arm64, Android 8+).
+        Commit: ${{ github.sha }}
+        Install the APK, then pick the oot.o2r you made from your own ROM with the desktop build
+        when the app first starts. No ROM or game assets are included.
+        TXT
+    - name: Upload APK
+      uses: actions/upload-artifact@v7
+      with:
+        name: zoot-realistic-android-arm64-build${{ github.run_number }}
+        path: dist
+        retention-days: 30

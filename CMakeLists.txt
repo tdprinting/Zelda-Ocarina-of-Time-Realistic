@@ -280,6 +280,10 @@ function(quiet_dependency_tree dir)
     endforeach()
 endfunction()
 
+# Android cross-compiles only the game: torch and the asset tools have to run on the build host,
+# so Android/build-apk.sh makes soh.o2r with a host configure and the APK ships it. The block is
+# left unindented to keep upstream merges clean.
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
 add_subdirectory(torch SYSTEM)
 quiet_dependency_tree(${CMAKE_CURRENT_SOURCE_DIR}/torch)
 
@@ -358,6 +362,8 @@ add_custom_target(GenerateSohOtr ALL DEPENDS ${CMAKE_BINARY_DIR}/soh/soh.o2r)
 
 # ExtractAssets produced soh.o2r as well as the rom archives, so keep doing that.
 add_dependencies(ExtractAssets GenerateSohOtr)
+
+endif() # NOT Android
 
 # The asset tools only need torch, so a tools-only configure can skip libultraship and soh
 # entirely -- that is all CI needs to produce soh.o2r.
@@ -443,5 +449,8 @@ elseif(CMAKE_SYSTEM_NAME MATCHES "Darwin")
     set(CPACK_GENERATOR "Bundle")
 endif()
 
+# Android is packaged by gradle (Android/), not CPack
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
 set(CPACK_PROJECT_CONFIG_FILE ${CMAKE_SOURCE_DIR}/CMake/Packaging-2.cmake)
 include(CMake/Packaging.cmake)
+endif()
