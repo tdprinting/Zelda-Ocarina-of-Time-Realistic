@@ -49,6 +49,15 @@
         @end
     @end
 
+    @if(o_modern_lighting)
+        @{attr} vec3 aNormal;
+        @{attr} vec3 aWorldPos;
+        @{out} vec3 vNormal;
+        @{out} @{highp} vec3 vWorldPos;
+        @{update_floats(3)}
+        @{update_floats(3)}
+    @end
+
     void main() {
         @for(i in 0..2)
             @if(o_textures[i])
@@ -72,6 +81,10 @@
         @end
         @for(i in 0..o_inputs)
             vInput@{i + 1} = aInput@{i + 1};
+        @end
+        @if(o_modern_lighting)
+            vNormal = aNormal;
+            vWorldPos = aWorldPos;
         @end
         gl_Position = aVtxPos;
         @if(opengles)
@@ -121,6 +134,48 @@
     uniform int frame_count;
     uniform float noise_scale;
 
+    @if(o_modern_lighting)
+    // Modern per-pixel lighting. Replaces the N64's per-vertex SHADE color on lit geometry
+    // (characters, items, weapons) and adds specular and rim light on top of the combiner output.
+    uniform vec3 uLightAmbient;
+    uniform int uLightCount;
+    uniform vec3 uLightDir[@{MODERN_LIGHTING_MAX_LIGHTS}];
+    uniform vec3 uLightColor[@{MODERN_LIGHTING_MAX_LIGHTS}];
+    uniform @{highp} vec3 uEyePos;
+    uniform vec4 uLightParams; // x: diffuse wrap, y: specular strength, z: specular power, w: rim strength
+
+    @{attr} vec3 vNormal;
+    @{attr} @{highp} vec3 vWorldPos;
+
+    vec3 modernDiffuse(vec3 n) {
+        vec3 c = uLightAmbient;
+        float wrap = uLightParams.x;
+        for (int i = 0; i < @{MODERN_LIGHTING_MAX_LIGHTS}; i++) {
+            if (i >= uLightCount) break;
+            float d = clamp((dot(n, uLightDir[i]) + wrap) / (1.0 + wrap), 0.0, 1.0);
+            c += uLightColor[i] * d;
+        }
+        return min(c, vec3(1.0));
+    }
+
+    vec3 modernSpecularRim(vec3 n, vec3 v) {
+        vec3 s = vec3(0.0);
+        float power = max(uLightParams.z, 1.0);
+        // Normalized Blinn-Phong so highlights keep their energy as they tighten
+        float norm = (power + 8.0) / 25.1327;
+        for (int i = 0; i < @{MODERN_LIGHTING_MAX_LIGHTS}; i++) {
+            if (i >= uLightCount) break;
+            float ndl = max(dot(n, uLightDir[i]), 0.0);
+            vec3 h = normalize(uLightDir[i] + v);
+            s += uLightColor[i] * (pow(max(dot(n, h), 0.0), power) * norm * ndl);
+        }
+        float fresnel = 1.0 - clamp(dot(n, v), 0.0, 1.0);
+        vec3 rim = (uLightAmbient + (uLightCount > 0 ? uLightColor[0] : vec3(0.0))) *
+                   (fresnel * fresnel * fresnel * uLightParams.w);
+        return s * uLightParams.y + rim;
+    }
+    @end
+
     @if(o_prim_depth)
     uniform float prim_depth;
     @end
@@ -165,6 +220,23 @@
     #define TEX_SIZE(tex) vec2(texture_width[tex], texture_height[tex])
 
     void main() {
+        @if(o_modern_lighting)
+            vec3 mlNormal = normalize(vNormal);
+            @{highp} vec3 mlToEye = uEyePos - vWorldPos;
+            vec3 mlView = normalize(mlToEye);
+            vec3 mlDiffuse = modernDiffuse(mlNormal);
+            @for(i in 0..o_inputs)
+                @if(o_shade_input[i])
+                    @if(o_alpha)
+                        vec4 vInputLit@{i + 1} = vec4(mlDiffuse, vInput@{i + 1}.a);
+                    @else
+                        vec3 vInputLit@{i + 1} = mlDiffuse;
+                    @end
+#define vInput@{i + 1} vInputLit@{i + 1}
+                @end
+            @end
+        @end
+
         @for(i in 0..2)
             @if(o_textures[i])
                 @{s = o_clamp[i][0]}
@@ -251,6 +323,14 @@
 
         texel = WRAP(texel, -0.51, 1.51);
         texel = clamp(texel, 0.0, 1.0);
+
+        @if(o_modern_lighting && o_uses_shade)
+            @if(o_alpha)
+                texel.rgb = clamp(texel.rgb + modernSpecularRim(mlNormal, mlView) * texel.a, 0.0, 1.0);
+            @else
+                texel = clamp(texel + modernSpecularRim(mlNormal, mlView), 0.0, 1.0);
+            @end
+        @end
         // TODO discard if alpha is 0?
         @if(o_fog)
             @if(o_alpha)

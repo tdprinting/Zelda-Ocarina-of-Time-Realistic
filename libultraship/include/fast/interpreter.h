@@ -85,6 +85,13 @@ enum class ShaderOpts {
 };
 
 #define SHADER_OPT(opt) ((uint64_t)(1 << static_cast<int>(ShaderOpts::opt)))
+
+// Modern rendering options live above the 16-bit prism shader id (bits 17..32).
+// MODERN_LIGHTING: the draw carries per-vertex world normals/positions and is lit per pixel.
+// SHADE_INPUT_MASK: which combiner RGB inputs (1..7) read SHADE, so the shader can replace them.
+#define SHADER_OPT_MODERN_LIGHTING ((uint64_t)1 << 33)
+#define SHADER_OPT_SHADE_INPUT_SHIFT 34
+#define SHADER_OPT_SHADE_INPUT_MASK ((uint64_t)0x7F << SHADER_OPT_SHADE_INPUT_SHIFT)
 #endif
 
 struct ColorCombinerKey {
@@ -113,6 +120,8 @@ struct CCFeatures {
     bool opt_invisible;
     bool opt_grayscale;
     bool opt_prim_depth;
+    bool opt_modern_lighting;
+    bool shade_input[7];
     bool usedTextures[2];
     bool used_masks[2];
     bool used_blend[2];
@@ -219,6 +228,9 @@ struct LoadedVertex {
     float u, v;
     struct RGBA color;
     uint8_t clip_rej;
+    // World-space normal and position, filled for lit vertices (G_LIGHTING) for modern per-pixel lighting
+    float nx, ny, nz;
+    float wx, wy, wz;
 };
 
 struct RawTexMetadata {
@@ -549,6 +561,17 @@ class Interpreter {
 
     const std::unordered_map<Mtx*, MtxF>* mCurMtxReplacements;
     bool mMarkerOn; // This was originally a debug feature. Now it seems to control s2dex?
+
+    // Modern rendering: per-pixel lighting state, refreshed when N64 lights or the projection change
+    void UpdateModernLightingSettings();
+    bool UseModernLighting(bool isRect) const;
+    void UploadModernLightingIfDirty();
+    bool mModernLightingEnabled = false;
+    bool mModernLightingDirty = true;
+    float mModernLightingParams[4] = {};
+    float mEyePos[3] = {};
+    bool mEyePosDirty = true;
+    ModernLightingState mModernLightingState = {};
     std::unordered_map<size_t, const char*> mShaders;
 
     typedef size_t ShaderId;

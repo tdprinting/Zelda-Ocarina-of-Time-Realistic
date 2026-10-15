@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 
+#include <algorithm>
 #include <map>
 #include <unordered_map>
 
@@ -63,6 +64,18 @@ void GfxRenderingAPIOGL::SetUniforms(ShaderProgram* prg) const {
 
 void GfxRenderingAPIOGL::SetPerDrawUniforms() {
     glUniform1f(mCurrentShaderProgram->prim_depth_location, mCurrentPrimDepth);
+
+    if (mCurrentShaderProgram->modernLighting &&
+        mCurrentShaderProgram->modernLightingSerial != mModernLightingSerial) {
+        const ModernLightingState& s = mModernLightingState;
+        glUniform3fv(mCurrentShaderProgram->lightAmbientLocation, 1, s.ambient);
+        glUniform1i(mCurrentShaderProgram->lightCountLocation, s.numLights);
+        glUniform3fv(mCurrentShaderProgram->lightDirLocation, MODERN_LIGHTING_MAX_LIGHTS, &s.dir[0][0]);
+        glUniform3fv(mCurrentShaderProgram->lightColorLocation, MODERN_LIGHTING_MAX_LIGHTS, &s.color[0][0]);
+        glUniform3fv(mCurrentShaderProgram->eyePosLocation, 1, s.eyePos);
+        glUniform4fv(mCurrentShaderProgram->lightParamsLocation, 1, s.params);
+        mCurrentShaderProgram->modernLightingSerial = mModernLightingSerial;
+    }
 
     if (mCurrentShaderProgram->usedTextures[0] || mCurrentShaderProgram->usedTextures[1]) {
         GLint filtering[2] = { textures[mCurrentTextureIds[0]].filtering, textures[mCurrentTextureIds[1]].filtering };
@@ -250,6 +263,11 @@ std::string GfxRenderingAPIOGL::BuildFsShader(const CCFeatures& cc_features) {
         { "o_invisible", cc_features.opt_invisible },
         { "o_grayscale", cc_features.opt_grayscale },
         { "o_prim_depth", cc_features.opt_prim_depth },
+        { "o_modern_lighting", cc_features.opt_modern_lighting },
+        { "o_shade_input", M_ARRAY(cc_features.shade_input, bool, 7) },
+        { "o_uses_shade", std::any_of(std::begin(cc_features.shade_input), std::end(cc_features.shade_input),
+                                      [](bool b) { return b; }) },
+        { "MODERN_LIGHTING_MAX_LIGHTS", MODERN_LIGHTING_MAX_LIGHTS },
         { "o_textures", M_ARRAY(cc_features.usedTextures, bool, 2) },
         { "o_masks", M_ARRAY(cc_features.used_masks, bool, 2) },
         { "o_blend", M_ARRAY(cc_features.used_blend, bool, 2) },
@@ -283,6 +301,7 @@ std::string GfxRenderingAPIOGL::BuildFsShader(const CCFeatures& cc_features) {
 #ifdef __APPLE__
         { "GLSL_VERSION", "#version 410 core" },
         { "attr", "in" },
+        { "highp", "" },
         { "opengles", false },
         { "core_opengl", true },
         { "texture", "texture" },
@@ -290,6 +309,7 @@ std::string GfxRenderingAPIOGL::BuildFsShader(const CCFeatures& cc_features) {
 #elif defined(USE_OPENGLES)
         { "GLSL_VERSION", "#version 300 es\nprecision mediump float;" },
         { "attr", "in" },
+        { "highp", "highp" },
         { "opengles", true },
         { "core_opengl", false },
         { "texture", "texture" },
@@ -297,6 +317,7 @@ std::string GfxRenderingAPIOGL::BuildFsShader(const CCFeatures& cc_features) {
 #else
         { "GLSL_VERSION", "#version 130" },
         { "attr", "varying" },
+        { "highp", "" },
         { "opengles", false },
         { "core_opengl", false },
         { "texture", "texture2D" },
@@ -350,19 +371,23 @@ static std::string BuildVsShader(const CCFeatures& cc_features) {
                                      { "o_grayscale", cc_features.opt_grayscale },
                                      { "o_alpha", cc_features.opt_alpha },
                                      { "o_inputs", cc_features.numInputs },
+                                     { "o_modern_lighting", cc_features.opt_modern_lighting },
                                      { "update_floats", (InvokeFunc)UpdateFloats },
 #ifdef __APPLE__
                                      { "GLSL_VERSION", "#version 410 core" },
+                                     { "highp", "" },
                                      { "attr", "in" },
                                      { "out", "out" },
                                      { "opengles", false }
 #elif defined(USE_OPENGLES)
                                      { "GLSL_VERSION", "#version 300 es" },
+                                     { "highp", "highp" },
                                      { "attr", "in" },
                                      { "out", "out" },
                                      { "opengles", true }
 #else
                                      { "GLSL_VERSION", "#version 110" },
+                                     { "highp", "" },
                                      { "attr", "attribute" },
                                      { "out", "varying" },
                                      { "opengles", false }
@@ -491,6 +516,15 @@ ShaderProgram* GfxRenderingAPIOGL::CreateAndLoadNewShader(uint64_t shader_id0, u
         ++cnt;
     }
 
+    if (cc_features.opt_modern_lighting) {
+        prg->attribLocations[cnt] = glGetAttribLocation(shader_program, "aNormal");
+        prg->attribSizes[cnt] = 3;
+        ++cnt;
+        prg->attribLocations[cnt] = glGetAttribLocation(shader_program, "aWorldPos");
+        prg->attribSizes[cnt] = 3;
+        ++cnt;
+    }
+
     prg->openglProgramId = shader_program;
     prg->numInputs = cc_features.numInputs;
     prg->usedTextures[0] = cc_features.usedTextures[0];
@@ -508,6 +542,14 @@ ShaderProgram* GfxRenderingAPIOGL::CreateAndLoadNewShader(uint64_t shader_id0, u
     prg->texture_width_location = glGetUniformLocation(shader_program, "texture_width");
     prg->texture_height_location = glGetUniformLocation(shader_program, "texture_height");
     prg->texture_filtering_location = glGetUniformLocation(shader_program, "texture_filtering");
+    prg->modernLighting = cc_features.opt_modern_lighting;
+    prg->modernLightingSerial = 0;
+    prg->lightAmbientLocation = glGetUniformLocation(shader_program, "uLightAmbient");
+    prg->lightCountLocation = glGetUniformLocation(shader_program, "uLightCount");
+    prg->lightDirLocation = glGetUniformLocation(shader_program, "uLightDir");
+    prg->lightColorLocation = glGetUniformLocation(shader_program, "uLightColor");
+    prg->eyePosLocation = glGetUniformLocation(shader_program, "uEyePos");
+    prg->lightParamsLocation = glGetUniformLocation(shader_program, "uLightParams");
 
     LoadShader(prg);
 
@@ -1100,6 +1142,15 @@ FilteringMode GfxRenderingAPIOGL::GetTextureFilter() {
 
 void GfxRenderingAPIOGL::SetSrgbMode() {
     mSrgbMode = true;
+}
+
+bool GfxRenderingAPIOGL::SupportsModernLighting() {
+    return true;
+}
+
+void GfxRenderingAPIOGL::SetModernLightingState(const ModernLightingState& state) {
+    mModernLightingState = state;
+    mModernLightingSerial++;
 }
 
 ImTextureID GfxRenderingAPIOGL::GetTextureById(int id) {

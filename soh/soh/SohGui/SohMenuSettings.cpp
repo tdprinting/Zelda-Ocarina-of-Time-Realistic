@@ -429,6 +429,59 @@ void SohMenu::AddMenuSettings() {
         .RaceDisable(false)
         .Options(ComboboxOptions().Tooltip("Sets the applied Texture Filtering.").ComboMap(textureFilteringMap));
 
+    AddWidget(path, "Modern Rendering", WIDGET_SEPARATOR_TEXT);
+    AddWidget(path, "Per-Pixel Lighting", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_MODERN_LIGHTING)
+        .RaceDisable(false)
+        .Options(CheckboxOptions()
+                     .Tooltip("Lights characters, items and weapons per pixel instead of per vertex, with specular "
+                              "highlights and rim light. Uses the game's own light directions and colors. "
+                              "OpenGL renderer only.")
+                     .DefaultValue(true));
+    auto hideWithoutModernLighting = [](WidgetInfo& info) {
+        info.isHidden = !CVarGetInteger(CVAR_MODERN_LIGHTING, 1);
+    };
+    AddWidget(path, "Light Wrap: %.2f", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar(CVAR_MODERN_LIGHTING_WRAP)
+        .RaceDisable(false)
+        .PreFunc(hideWithoutModernLighting)
+        .Options(FloatSliderOptions()
+                     .Tooltip("Softens the light falloff on the shadowed side of models. 0 matches the N64.")
+                     .Min(0.0f)
+                     .Max(1.0f)
+                     .DefaultValue(0.25f)
+                     .Format("%.2f"));
+    AddWidget(path, "Specular Strength: %.2f", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar(CVAR_MODERN_LIGHTING_SPECULAR)
+        .RaceDisable(false)
+        .PreFunc(hideWithoutModernLighting)
+        .Options(FloatSliderOptions()
+                     .Tooltip("Brightness of light highlights on characters, items and weapons.")
+                     .Min(0.0f)
+                     .Max(2.0f)
+                     .DefaultValue(0.35f)
+                     .Format("%.2f"));
+    AddWidget(path, "Specular Sharpness: %.0f", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar(CVAR_MODERN_LIGHTING_SHININESS)
+        .RaceDisable(false)
+        .PreFunc(hideWithoutModernLighting)
+        .Options(FloatSliderOptions()
+                     .Tooltip("Higher values give smaller, glossier highlights.")
+                     .Min(2.0f)
+                     .Max(128.0f)
+                     .DefaultValue(24.0f)
+                     .Format("%.0f"));
+    AddWidget(path, "Rim Light: %.2f", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar(CVAR_MODERN_LIGHTING_RIM)
+        .RaceDisable(false)
+        .PreFunc(hideWithoutModernLighting)
+        .Options(FloatSliderOptions()
+                     .Tooltip("Edge light that separates characters from the background.")
+                     .Min(0.0f)
+                     .Max(1.0f)
+                     .DefaultValue(0.2f)
+                     .Format("%.2f"));
+
     path.column = SECTION_COLUMN_2;
     AddWidget(path, "Advanced Graphics Options", WIDGET_SEPARATOR_TEXT);
 

@@ -16,6 +16,19 @@ struct GfxClipParameters {
 
 enum FilteringMode { FILTER_THREE_POINT, FILTER_LINEAR, FILTER_NONE };
 
+#define MODERN_LIGHTING_MAX_LIGHTS 7
+
+// Lighting inputs for the modern per-pixel lighting path. Directions and positions are world space.
+struct ModernLightingState {
+    float ambient[3];
+    int32_t numLights;
+    float dir[MODERN_LIGHTING_MAX_LIGHTS][3]; // normalized, pointing from the surface toward the light
+    float color[MODERN_LIGHTING_MAX_LIGHTS][3];
+    float eyePos[3];
+    // x: diffuse wrap, y: specular strength, z: specular power, w: rim strength
+    float params[4];
+};
+
 // A hash function used to hash a: pair<float, float>
 struct hash_pair_ff {
     size_t operator()(const std::pair<float, float>& p) const {
@@ -79,6 +92,12 @@ class GfxRenderingAPI {
     virtual void SetSrgbMode() = 0;
     virtual ImTextureID GetTextureById(int id) = 0;
     virtual void SetCurrentPrimDepth(float depth) = 0;
+    // Backends that can consume the extra per-vertex normal/world position attributes return true.
+    virtual bool SupportsModernLighting() {
+        return false;
+    }
+    virtual void SetModernLightingState(const ModernLightingState& state) {
+    }
 
   protected:
     int8_t mCurrentDepthTest = 0;

@@ -30,8 +30,8 @@ struct ShaderProgram {
     uint8_t numInputs;
     bool usedTextures[SHADER_MAX_TEXTURES];
     uint8_t numFloats;
-    GLint attribLocations[16];
-    uint8_t attribSizes[16];
+    GLint attribLocations[20];
+    uint8_t attribSizes[20];
     uint8_t numAttribs;
     GLint frameCountLocation;
     GLint noiseScaleLocation;
@@ -39,6 +39,14 @@ struct ShaderProgram {
     GLint texture_width_location;
     GLint texture_height_location;
     GLint texture_filtering_location;
+    bool modernLighting;
+    uint32_t modernLightingSerial;
+    GLint lightAmbientLocation;
+    GLint lightCountLocation;
+    GLint lightDirLocation;
+    GLint lightColorLocation;
+    GLint eyePosLocation;
+    GLint lightParamsLocation;
 };
 
 struct FramebufferOGL {
@@ -104,6 +112,8 @@ class GfxRenderingAPIOGL final : public GfxRenderingAPI {
     FilteringMode GetTextureFilter() override;
     void SetSrgbMode() override;
     ImTextureID GetTextureById(int id) override;
+    bool SupportsModernLighting() override;
+    void SetModernLightingState(const ModernLightingState& state) override;
 
   private:
     void SetUniforms(ShaderProgram* prg) const;
@@ -118,7 +128,10 @@ class GfxRenderingAPIOGL final : public GfxRenderingAPI {
     int8_t mLastBlendEnabled = -1;
     int8_t mLastScissorEnabled = -1;
 
-    std::map<std::pair<uint64_t, uint32_t>, ShaderProgram> mShaderProgramPool;
+    std::map<std::pair<uint64_t, uint64_t>, ShaderProgram> mShaderProgramPool;
+    ModernLightingState mModernLightingState = {};
+    // Starts at 1 so freshly created programs (serial 0) always receive the current state
+    uint32_t mModernLightingSerial = 1;
     ShaderProgram* mCurrentShaderProgram;
     ShaderProgram* mLastLoadedShader = nullptr;
 

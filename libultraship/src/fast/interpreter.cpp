@@ -422,6 +422,15 @@ void Interpreter::GenerateCC(ColorCombiner* comb, const ColorCombinerKey& key) {
             }
         }
     }
+    if (shaderId1 & SHADER_OPT_MODERN_LIGHTING) {
+        uint64_t shadeMask = 0;
+        for (int k = 0; k < 7; k++) {
+            if (shaderInputMapping[0][k] == G_CCMUX_SHADE) {
+                shadeMask |= (uint64_t)1 << k;
+            }
+        }
+        shaderId1 |= shadeMask << SHADER_OPT_SHADE_INPUT_SHIFT;
+    }
     comb->shader_id0 = shaderId0;
     comb->shader_id1 = shaderId1;
     comb->usedTextures[0] = usedTextures[0];
@@ -1517,8 +1526,10 @@ void Interpreter::GfxSpMatrix(uint8_t parameters, const int32_t* addr) {
     if (parameters & mtx_projection) {
         if (parameters & mtx_load) {
             memcpy(mRsp->P_matrix, matrix, sizeof(matrix));
+            mEyePosDirty = true;
         } else {
             MatrixMul(mRsp->P_matrix, matrix, mRsp->P_matrix);
+            mEyePosDirty = true;
         }
     } else { // G_MTX_MODELVIEW
         if ((parameters & mtx_push) && mRsp->modelview_matrix_stack_size < 11) {
@@ -1577,6 +1588,98 @@ void Interpreter::AdjustWidthHeightForScale(uint32_t& width, uint32_t& height, u
     }
 }
 
+void Interpreter::UpdateModernLightingSettings() {
+    auto cvars = Ship::Context::GetRawInstance()->GetConsoleVariables();
+    const bool enabled = mRapi->SupportsModernLighting() &&
+                         cvars->GetInteger(CVAR_MODERN_LIGHTING, 1) != 0;
+    const float params[4] = {
+        cvars->GetFloat(CVAR_MODERN_LIGHTING_WRAP, 0.25f),
+        cvars->GetFloat(CVAR_MODERN_LIGHTING_SPECULAR, 0.35f),
+        cvars->GetFloat(CVAR_MODERN_LIGHTING_SHININESS, 24.0f),
+        cvars->GetFloat(CVAR_MODERN_LIGHTING_RIM, 0.2f),
+    };
+    if (enabled != mModernLightingEnabled || memcmp(params, mModernLightingParams, sizeof(params)) != 0) {
+        mModernLightingEnabled = enabled;
+        memcpy(mModernLightingParams, params, sizeof(params));
+        mModernLightingDirty = true;
+    }
+}
+
+bool Interpreter::UseModernLighting(bool isRect) const {
+    // Positional (Majora's Mask style) lights keep the vanilla per-vertex path for now
+    return mModernLightingEnabled && !isRect && (mRsp->geometry_mode & G_LIGHTING) &&
+           !(mRsp->geometry_mode & G_LIGHTING_POSITIONAL);
+}
+
+void Interpreter::UploadModernLightingIfDirty() {
+    if (mEyePosDirty) {
+        // The eye is where clip x, y and w are all zero: solve the 3x3 system built from
+        // the x, y and w columns of the (row-vector) view-projection matrix.
+        const float(*P)[4] = mRsp->P_matrix;
+        const int cols[3] = { 0, 1, 3 };
+        float a[3][3], b[3];
+        for (int r = 0; r < 3; r++) {
+            for (int c = 0; c < 3; c++) {
+                a[r][c] = P[c][cols[r]];
+            }
+            b[r] = -P[3][cols[r]];
+        }
+        float det = a[0][0] * (a[1][1] * a[2][2] - a[1][2] * a[2][1]) -
+                    a[0][1] * (a[1][0] * a[2][2] - a[1][2] * a[2][0]) +
+                    a[0][2] * (a[1][0] * a[2][1] - a[1][1] * a[2][0]);
+        // Orthographic projections have no eye point; keep the previous one
+        if (fabsf(det) > 1e-12f) {
+            for (int k = 0; k < 3; k++) {
+                float m[3][3];
+                memcpy(m, a, sizeof(m));
+                for (int r = 0; r < 3; r++) {
+                    m[r][k] = b[r];
+                }
+                float detK = m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) -
+                             m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) +
+                             m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+                mEyePos[k] = detK / det;
+            }
+        }
+        mEyePosDirty = false;
+        mModernLightingDirty = true;
+    }
+
+    if (!mModernLightingDirty) {
+        return;
+    }
+    mModernLightingDirty = false;
+
+    ModernLightingState state = {};
+    if (mRsp->current_num_lights > 0) {
+        const auto& ambient = mRsp->current_lights[mRsp->current_num_lights - 1].l;
+        for (int k = 0; k < 3; k++) {
+            state.ambient[k] = ambient.col[k] / 255.0f;
+        }
+    }
+    state.numLights = std::clamp<int>(mRsp->current_num_lights - 1, 0, MODERN_LIGHTING_MAX_LIGHTS);
+    for (int i = 0; i < state.numLights; i++) {
+        const auto& light = mRsp->current_lights[i].l;
+        float dir[3] = { (float)light.dir[0], (float)light.dir[1], (float)light.dir[2] };
+        if (dir[0] == 0.0f && dir[1] == 0.0f && dir[2] == 0.0f) {
+            dir[1] = 1.0f;
+        }
+        NormalizeVector(dir);
+        for (int k = 0; k < 3; k++) {
+            state.dir[i][k] = dir[k];
+            state.color[i][k] = light.col[k] / 255.0f;
+        }
+    }
+    memcpy(state.eyePos, mEyePos, sizeof(state.eyePos));
+    memcpy(state.params, mModernLightingParams, sizeof(state.params));
+
+    if (memcmp(&state, &mModernLightingState, sizeof(state)) != 0) {
+        Flush();
+        mModernLightingState = state;
+        mRapi->SetModernLightingState(state);
+    }
+}
+
 void Interpreter::GfxSpVertex(size_t n_vertices, size_t dest_index, const F3DVtx* vertices) {
     for (size_t i = 0; i < n_vertices; i++, dest_index++) {
         const F3DVtx_t* v = &vertices[i].v;
@@ -1610,7 +1713,26 @@ void Interpreter::GfxSpVertex(size_t n_vertices, size_t dest_index, const F3DVtx
         short V = v->tc[1] * mRsp->texture_scaling_factor.t >> 16;
 
         if (mRsp->geometry_mode & G_LIGHTING) {
+            if (mModernLightingEnabled) {
+                // Model -> world transform (OoT folds the view matrix into the projection matrix)
+                float(*mtx)[4] = mRsp->modelview_matrix_stack[mRsp->modelview_matrix_stack_size - 1];
+                float n[3] = { (float)vn->n[0], (float)vn->n[1], (float)vn->n[2] };
+                float wn[3];
+                for (int k = 0; k < 3; k++) {
+                    wn[k] = n[0] * mtx[0][k] + n[1] * mtx[1][k] + n[2] * mtx[2][k];
+                }
+                if (wn[0] != 0.0f || wn[1] != 0.0f || wn[2] != 0.0f) {
+                    NormalizeVector(wn);
+                }
+                d->nx = wn[0];
+                d->ny = wn[1];
+                d->nz = wn[2];
+                d->wx = v->ob[0] * mtx[0][0] + v->ob[1] * mtx[1][0] + v->ob[2] * mtx[2][0] + mtx[3][0];
+                d->wy = v->ob[0] * mtx[0][1] + v->ob[1] * mtx[1][1] + v->ob[2] * mtx[2][1] + mtx[3][1];
+                d->wz = v->ob[0] * mtx[0][2] + v->ob[1] * mtx[1][2] + v->ob[2] * mtx[2][2] + mtx[3][2];
+            }
             if (mRsp->lights_changed) {
+                mModernLightingDirty = true;
                 for (int i = 0; i < mRsp->current_num_lights - 1; i++) {
                     CalculateNormalDir(&mRsp->current_lights[i].l, mRsp->current_lights_coeffs[i]);
                 }
@@ -1916,10 +2038,16 @@ void Interpreter::GfxSpTri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx
         cc_options |= SHADER_OPT(PRIM_DEPTH);
     }
 
+    const bool use_modern_lighting = UseModernLighting(is_rect);
+    if (use_modern_lighting) {
+        cc_options |= SHADER_OPT_MODERN_LIGHTING;
+    }
+
     if (!mShaderStack.empty()) {
-        cc_options |= (mShaderStack.top() << SHADER_ID_SHIFT);
+        cc_options |= ((uint64_t)(mShaderStack.top() & 0xFFFF) << SHADER_ID_SHIFT);
     } else {
-        cc_options |= -1 << SHADER_ID_SHIFT;
+        // Keep the "no custom shader" marker inside the 16-bit id field so the bits above stay free
+        cc_options |= (uint64_t)0xFFFF << SHADER_ID_SHIFT;
     }
 
     if (mRdp->loaded_texture[0].masked) {
@@ -2091,6 +2219,10 @@ void Interpreter::GfxSpTri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx
         mRapi->SetUseAlpha(use_alpha);
         mRenderingState.alpha_blend = use_alpha;
     }
+    if (use_modern_lighting) {
+        UploadModernLightingIfDirty();
+    }
+
     uint8_t numInputs;
     bool usedTextures[2];
 
@@ -2269,6 +2401,15 @@ void Interpreter::GfxSpTri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx
                     }
                 }
             }
+        }
+
+        if (use_modern_lighting) {
+            mBufVbo[mBufVboLen++] = v_arr[i]->nx;
+            mBufVbo[mBufVboLen++] = v_arr[i]->ny;
+            mBufVbo[mBufVboLen++] = v_arr[i]->nz;
+            mBufVbo[mBufVboLen++] = v_arr[i]->wx;
+            mBufVbo[mBufVboLen++] = v_arr[i]->wy;
+            mBufVbo[mBufVboLen++] = v_arr[i]->wz;
         }
 
         // struct RGBA *color = &v_arr[i]->color;
@@ -5052,6 +5193,7 @@ bool Interpreter::ViewportMatchesRendererResolution() {
 }
 
 void Interpreter::StartFrame() {
+    UpdateModernLightingSettings();
     mWapi->GetDimensions(&mGfxCurrentWindowDimensions.width, &mGfxCurrentWindowDimensions.height, &mCurWindowPosX,
                          &mCurWindowPosY);
     if (mCurDimensions.height == 0) {
@@ -5426,6 +5568,10 @@ void gfx_cc_get_features(uint64_t shader_id0, uint64_t shader_id1, struct CCFeat
     cc_features->opt_invisible = (shader_id1 & SHADER_OPT(INVISIBLE)) != 0;
     cc_features->opt_grayscale = (shader_id1 & SHADER_OPT(GRAYSCALE)) != 0;
     cc_features->opt_prim_depth = (shader_id1 & SHADER_OPT(PRIM_DEPTH)) != 0;
+    cc_features->opt_modern_lighting = (shader_id1 & SHADER_OPT_MODERN_LIGHTING) != 0;
+    for (int i = 0; i < 7; i++) {
+        cc_features->shade_input[i] = ((shader_id1 >> (SHADER_OPT_SHADE_INPUT_SHIFT + i)) & 1) != 0;
+    }
 
     cc_features->clamp[0][0] = shader_id1 & SHADER_OPT(TEXEL0_CLAMP_S);
     cc_features->clamp[0][1] = shader_id1 & SHADER_OPT(TEXEL0_CLAMP_T);
