@@ -21,24 +21,23 @@ parents = [int(p) for p in D['parents']]
 nb = len(names)
 vanilla = [np.array(l['trans'], float) for l in read_skel()]
 idx = {n: i for i, n in enumerate(names)}
+GROUND = -20.0  # model units; the original's soles sit about 50 below the actor's origin when standing
 
 # Joints that take the original offsets (the rest keep the model's own limb lengths, scaled with their parent).
-ORIGINAL_JOINTS = ['LeftThigh', 'RightThigh', 'Head', 'LeftShoulder', 'RightShoulder']
-# Uniform scale of each part about its joint. The torso matches the original's shoulder-to-hip length
-# (996 / 1273). The head shrinks a little less than the body, as on the original the head is large for the body,
-# and the boots come down to the original's smaller feet.
-SCALE = {'Root': 0.78, 'Waist': 0.78, 'LowerControl': 0.78, 'UpperControl': 0.78, 'Torso': 0.78, 'Collar': 0.78,
-         'Sheath': 0.78, 'LeftShoulder': 0.86, 'RightShoulder': 0.86, 'LeftForearm': 0.9, 'RightForearm': 0.9,
-         'LeftHand': 0.95, 'RightHand': 0.95, 'LeftThigh': 0.9, 'RightThigh': 0.9,
-         'LeftShin': 0.9, 'RightShin': 0.9, 'LeftFoot': 0.86, 'RightFoot': 0.86, 'Head': 0.93}
-s = np.ones(nb)
+ORIGINAL_JOINTS = ['Head']
+# Scale of each part about its joint, uniform or (x, y, z) in model space (x across, y up, z forward). The torso is
+# shortened to about the original's shoulder-to-hip length (996 / 1273) but keeps most of its width and depth, so Link
+# keeps a child's build instead of looking thin; the hips and shoulders follow the body's scale. The head, arms
+# and legs keep the model's own size.
+SCALE = {'Root': (0.86, 0.77, 0.86), 'Waist': (0.86, 0.77, 0.86), 'LowerControl': (0.86, 0.77, 0.86),
+         'UpperControl': (1.0, 0.77, 0.9), 'Torso': (1.0, 0.77, 0.9), 'Collar': (1.0, 0.77, 0.9),
+         'Sheath': (1.0, 0.77, 0.9), 'LeftFoot': 0.95, 'RightFoot': 0.95}
+s = np.ones((nb, 3))
 for i, n in enumerate(names):
     if n in SCALE:
         s[i] = SCALE[n]
     elif n.startswith('Skirt'):
         s[i] = SCALE['Waist']
-    elif n.startswith('Hat') or n.startswith('Eye') or n.startswith('Lid'):
-        s[i] = SCALE['Head']
 
 order = []
 def visit(i):
@@ -51,24 +50,21 @@ for r in range(nb):
         visit(r)
 
 skel_limbs = len(F['names'])
-newB = np.zeros_like(B)
+newB = B.copy()  # bind rotations are kept; only the joint positions move
 M = np.zeros_like(B)  # model space -> refitted model space, per bone
 jointPos = [list(map(float, j)) for j in F['jointPos']]
 for i in order:
     p = parents[i]
-    if p < 0:
-        newB[i] = B[i]
-    else:
-        local = np.linalg.inv(B[p]) @ B[i]  # bind-pose offset and rotation in the parent's frame
-        if i < skel_limbs:
-            j = vanilla[i] if names[i] in ORIGINAL_JOINTS else local[:3, 3] * s[p]
-            jointPos[i] = [float(x) for x in j]
+    if p >= 0:
+        if names[i] in ORIGINAL_JOINTS:
+            newB[i, :3, 3] = newB[p, :3, 3] + B[p, :3, :3] @ vanilla[i]
         else:
-            j = local[:3, 3] * s[p]  # cloth chains and eyes ride on their parent's scaled shape
-        nl = local.copy(); nl[:3, 3] = j
-        newB[i] = newB[p] @ nl
-    S = np.diag([s[i], s[i], s[i], 1.0])
-    M[i] = newB[i] @ S @ np.linalg.inv(B[i])
+            newB[i, :3, 3] = newB[p, :3, 3] + s[p] * (B[i, :3, 3] - B[p, :3, 3])
+        if i < skel_limbs:
+            jointPos[i] = [float(x) for x in B[p, :3, :3].T @ (newB[i, :3, 3] - newB[p, :3, 3])]
+    M[i] = np.eye(4)
+    M[i, :3, :3] = np.diag(s[i])
+    M[i, :3, 3] = newB[i, :3, 3] - s[i] * B[i, :3, 3]
 
 P, N, BI, BW = D['pos'], D['nrm'], D['bi'], D['bw']
 W = np.zeros((len(P), nb))
@@ -77,7 +73,7 @@ for k in range(4):
 W /= np.maximum(W.sum(1, keepdims=True), 1e-9)
 A = np.einsum('vb,bij->vij', W, M)  # blended affine per vertex
 P2 = np.einsum('vij,vj->vi', A[:, :3, :3], P) + A[:, :3, 3]
-N2 = np.einsum('vij,vj->vi', A[:, :3, :3], N)
+N2 = np.einsum('vji,vj->vi', np.linalg.inv(A[:, :3, :3]), N)  # inverse transpose: the scale is not uniform
 N2 /= np.maximum(np.linalg.norm(N2, axis=1, keepdims=True), 1e-9)
 D['pos'], D['nrm'], D['binds'] = P2, N2, newB
 for k in list(D.keys()):
@@ -89,14 +85,26 @@ if 'eye_centres' in D:
     for e, bone in enumerate(['EyeR', 'EyeL']):
         ec[e] = (M[idx[bone]] @ np.append(ec[e], 1))[:3]
     D['eye_centres'] = ec
-# The game scales the animation's root height by our hip height over the original's, so the feet stay on the
-# ground: the hip height is now measured from the refitted hips to the refitted soles.
-hip = 0.5 * (newB[idx['LeftThigh']][1, 3] + newB[idx['RightThigh']][1, 3]) - P2[:, 1].min()
+# The game scales the animation's root height by our hip height over the original's. It is calibrated on the
+# standing animation so the soles rest where the original's do (its boots sink very slightly into the floor).
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from pose import pose_mats, skin
+from ootskel import read_anim
+D['pos'] = P2
+D['jointPos'] = np.array(jointPos)
+idle = read_anim('gPlayerAnim_link_normal_wait_free')[0]
+feet = np.isin(BI[:, 0], [idx['LeftFoot'], idx['RightFoot']])
+ysc = 1.0
+for _ in range(4):
+    sole = skin(D, pose_mats(D, idle, ysc))[feet, 1].min()
+    ysc -= (sole - GROUND) / (idle[1] * 0.64)
+del D['jointPos']
 print('height', round(P[:, 1].max() - P[:, 1].min()), '->', round(P2[:, 1].max() - P2[:, 1].min()),
-      'hip height', round(F['ourHipHeight']), '->', round(hip))
-F['ourHipHeight'] = float(hip)
+      'root height scale', round(F['ourHipHeight'] / F['ootHipHeight'], 3), '->', round(ysc, 3))
+F['ourHipHeight'] = float(ysc * F['ootHipHeight'])
 F['jointPos'] = jointPos
 F['bind'] = [newB[i].tolist() for i in range(skel_limbs)]
 np.savez(out_npz, **D)
 json.dump(F, open(out_fit, 'w'))
 print('head centre (ClothSim)', np.round((M[idx['Head']] @ np.array([0, 3900, 330, 1.0]))[:3]))
+print('scaled widths', {n: s[idx[n]].tolist() for n in ('Torso', 'Waist')})
