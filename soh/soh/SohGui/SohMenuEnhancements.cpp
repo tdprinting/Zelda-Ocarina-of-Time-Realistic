@@ -3,6 +3,7 @@
 #include "soh/Enhancements/SwitchAge.h"
 #include "soh/Enhancements/AdultMasks.h"
 #include "soh/Enhancements/BunnyHood.h"
+#include "soh/Enhancements/PlayerModel/PlayerModel.h"
 #include "soh/Enhancements/FileSelectEnhancements.h"
 #include <soh/Enhancements/game-interactor/GameInteractor.h>
 #include <soh/OTRGlobals.h>
@@ -736,6 +737,37 @@ void SohMenu::AddMenuEnhancements() {
         .Options(CheckboxOptions().Tooltip(
             "When Medallions are collected, the Medallion imprints around the Master Sword Pedestal in the Temple "
             "of Time will become colored-in."));
+
+    AddWidget(path, "Young Link Model", WIDGET_SEPARATOR_TEXT);
+    AddWidget(path, "High-Detail Young Link", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_PLAYER_MODEL_CHILD)
+        .RaceDisable(false)
+        .Options(CheckboxOptions()
+                     .Tooltip("Replaces young Link with the high-detail model. It plays all of the original "
+                              "animations. Ignored while a custom Link model mod is loaded.")
+                     .DefaultValue(true));
+    auto hideWithoutPlayerModel = [](WidgetInfo& info) { info.isHidden = !CVarGetInteger(CVAR_PLAYER_MODEL_CHILD, 1); };
+    AddWidget(path, "Cloth Physics", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_PLAYER_MODEL_CLOTH)
+        .RaceDisable(false)
+        .PreFunc(hideWithoutPlayerModel)
+        .Options(CheckboxOptions().Tooltip("Lets the hat and tunic swing and settle.").DefaultValue(true));
+    AddWidget(path, "Facial Expressions", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_PLAYER_MODEL_FACE)
+        .RaceDisable(false)
+        .PreFunc(hideWithoutPlayerModel)
+        .Options(CheckboxOptions()
+                     .Tooltip("Link blinks, looks at what he is targeting or talking to, and reacts to fights, "
+                              "damage, treasure, falls, swimming and the story so far.")
+                     .DefaultValue(true));
+    AddWidget(path, "Wet and Dirty Clothes", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_PLAYER_MODEL_SURFACE)
+        .RaceDisable(false)
+        .PreFunc(hideWithoutPlayerModel)
+        .Options(CheckboxOptions()
+                     .Tooltip("Water soaks Link's clothes and they dry over time; rolling on dirt, sand or grass "
+                              "leaves marks that water washes off.")
+                     .DefaultValue(true));
 
     path.column = SECTION_COLUMN_2;
     AddWidget(path, "UI", WIDGET_SEPARATOR_TEXT);

@@ -26,6 +26,7 @@ namespace {
 
 TextureType TypeFromString(const std::string& format) {
     if (format == "rgba32") return TextureType::RGBA32bpp;
+    if (format == "rgba32hd") return TextureType::RGBA32bpp;
     if (format == "rgb5a1") return TextureType::RGBA16bpp;
     if (format == "ci4")    return TextureType::Palette4bpp;
     if (format == "ci8")    return TextureType::Palette8bpp;
@@ -102,6 +103,8 @@ std::vector<uint8_t> Encode(const uint8_t* rgba, int w, int h, TextureType type)
 
 namespace PngTexture {
 
+constexpr int HdNominalSize = 32;
+
 bool IsFormat(const std::string& format) {
     return TypeFromString(format) != TextureType::Error;
 }
@@ -125,10 +128,27 @@ bool Convert(const fs::path& png, const fs::path& dest, const std::string& forma
     }
 
     LUS::BinaryWriter writer;
-    BaseExporter::WriteHeader(writer, Torch::ResourceType::Texture, 0);
-    writer.Write((uint32_t)type);
-    writer.Write((uint32_t)w);
-    writer.Write((uint32_t)h);
+    if (format == "rgba32hd") {
+        // An HD texture: display lists address it as a 32x32 texture and the interpreter scales the
+        // tile up to the real size (the same mechanism HD texture packs use), so one texture can be
+        // larger than what a single N64 texture load allows.
+        if (w % HdNominalSize != 0 || h % HdNominalSize != 0) {
+            fprintf(stderr, "%s: hd textures must be a multiple of %d pixels\n", png.string().c_str(), HdNominalSize);
+            return false;
+        }
+        BaseExporter::WriteHeader(writer, Torch::ResourceType::Texture, 1);
+        writer.Write((uint32_t)type);
+        writer.Write((uint32_t)w);
+        writer.Write((uint32_t)h);
+        writer.Write((uint32_t)1); // TEX_FLAG_LOAD_AS_RAW
+        writer.Write((float)w / HdNominalSize);
+        writer.Write((float)h / HdNominalSize);
+    } else {
+        BaseExporter::WriteHeader(writer, Torch::ResourceType::Texture, 0);
+        writer.Write((uint32_t)type);
+        writer.Write((uint32_t)w);
+        writer.Write((uint32_t)h);
+    }
     writer.Write((uint32_t)encoded.size());
     writer.Write((char*)encoded.data(), encoded.size());
 
