@@ -464,3 +464,4 @@ soh/properties.h
 
 # Headless render test captures (may contain game imagery)
 render-test-output/
+anim-test-output/

@@ -14,6 +14,7 @@
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/Enhancements/nametag.h"
+#include "soh/Enhancements/ModernAnimation/NpcFace.h"
 
 #include "soh/ActorDB.h"
 #include "soh/OTRGlobals.h"
@@ -2802,7 +2803,9 @@ void Actor_Draw(PlayState* play, Actor* actor) {
         }
     }
 
+    NpcFace_BeginActorDraw(play, actor);
     actor->draw(actor, play);
+    NpcFace_EndActorDraw(play, actor);
 
     if (actor->colorFilterTimer != 0) {
         if (actor->colorFilterParams & 0x2000) {

@@ -4,6 +4,8 @@
 #include "soh/Enhancements/AdultMasks.h"
 #include "soh/Enhancements/BunnyHood.h"
 #include "soh/Enhancements/FileSelectEnhancements.h"
+#include "soh/Enhancements/ModernAnimation/ModernAnimation.h"
+#include "soh/Enhancements/ModernAnimation/NpcFace.h"
 #include <soh/Enhancements/game-interactor/GameInteractor.h>
 #include <soh/OTRGlobals.h>
 #include <soh/Enhancements/cosmetics/authenticGfxPatches.h>
@@ -894,6 +896,64 @@ void SohMenu::AddMenuEnhancements() {
             " - Blue Warps\n"
             " - Darunia\n"
             " - Gold Skulltulas"));
+
+    AddWidget(path, "Modern Animation", WIDGET_SEPARATOR_TEXT).RaceDisable(false);
+    AddWidget(path, "Modern Animation", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_MODERN_ANIM_ENABLED)
+        .RaceDisable(false)
+        .Options(
+            CheckboxOptions()
+                .Tooltip("Smoother, more natural movement for Link, NPCs and enemies, in the style of Twilight "
+                         "Princess and Ocarina of Time 3D. Only what is drawn changes: movement, timing, hitboxes and "
+                         "everything else in gameplay stay exactly as in the original.")
+                .DefaultValue(true));
+    auto hideWithoutModernAnimation = [](WidgetInfo& info) {
+        info.isHidden = !CVarGetInteger(CVAR_MODERN_ANIM_ENABLED, 1);
+    };
+    AddWidget(path, "Cross-Fade Link's Animations: %d frames", WIDGET_CVAR_SLIDER_INT)
+        .CVar(CVAR_MODERN_ANIM_PLAYER_BLEND)
+        .RaceDisable(false)
+        .PreFunc(hideWithoutModernAnimation)
+        .Options(IntSliderOptions()
+                     .Min(0)
+                     .Max(MODERN_ANIM_BLEND_MAX)
+                     .DefaultValue(MODERN_ANIM_PLAYER_BLEND_DEFAULT)
+                     .Tooltip("Blends Link into a new animation over this many frames wherever the original game "
+                              "cuts to it instantly. 0 keeps the original cuts."));
+    AddWidget(path, "Cross-Fade NPC and Enemy Animations: %d frames", WIDGET_CVAR_SLIDER_INT)
+        .CVar(CVAR_MODERN_ANIM_ACTOR_BLEND)
+        .RaceDisable(false)
+        .PreFunc(hideWithoutModernAnimation)
+        .Options(IntSliderOptions()
+                     .Min(0)
+                     .Max(MODERN_ANIM_BLEND_MAX)
+                     .DefaultValue(MODERN_ANIM_ACTOR_BLEND_DEFAULT)
+                     .Tooltip("Blends NPCs and enemies into a new animation over this many frames wherever the "
+                              "original game cuts to it instantly. 0 keeps the original cuts."));
+    AddWidget(path, "Eased Transitions", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_MODERN_ANIM_EASING)
+        .RaceDisable(false)
+        .PreFunc(hideWithoutModernAnimation)
+        .Options(CheckboxOptions()
+                     .Tooltip("Cross-fades between animations speed up and slow down smoothly instead of moving at "
+                              "a constant rate and stopping abruptly.")
+                     .DefaultValue(true));
+    AddWidget(path, "Expressive NPC Faces", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_MODERN_ANIM_NPC_FACES)
+        .RaceDisable(false)
+        .PreFunc(hideWithoutModernAnimation)
+        .Options(CheckboxOptions()
+                     .Tooltip("NPCs and enemies blink naturally, look at Link or their work, and show a mood that "
+                              "fits what they are doing: strain when lifting, anger, joy, worry, sleepiness.")
+                     .DefaultValue(true));
+    AddWidget(path, "Smooth Slow Animations", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_MODERN_ANIM_SUBFRAME)
+        .RaceDisable(false)
+        .PreFunc(hideWithoutModernAnimation)
+        .Options(CheckboxOptions()
+                     .Tooltip("Animations played slower than normal blend between their keyframes instead of "
+                              "holding each one, which removes the stutter on slow walks and idles.")
+                     .DefaultValue(true));
 
     path.sidebarName = "Items";
     AddSidebarEntry("Enhancements", path.sidebarName, 3);

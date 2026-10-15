@@ -1,0 +1,168 @@
+{
+  "warmupTicks": 60,
+  "seed": 24301,
+  "cvars": {
+    "gSettings.InterpolationFPS": 20
+  },
+  "clips": [
+    {
+      "name": "link-moves",
+      "entrance": 238,
+      "age": "child",
+      "dayTime": 32768,
+      "frames": 110,
+      "inputs": [
+        {
+          "from": 5,
+          "to": 30,
+          "stick": [
+            0,
+            80
+          ]
+        },
+        {
+          "from": 30,
+          "to": 42,
+          "stick": [
+            80,
+            0
+          ]
+        },
+        {
+          "from": 55,
+          "to": 57,
+          "buttons": [
+            "B"
+          ]
+        },
+        {
+          "from": 72,
+          "to": 74,
+          "buttons": [
+            "B"
+          ]
+        },
+        {
+          "from": 90,
+          "to": 104,
+          "stick": [
+            0,
+            28
+          ]
+        }
+      ],
+      "highlight": [
+        50,
+        90
+      ]
+    },
+    {
+      "name": "kokiri-npcs",
+      "entrance": 238,
+      "age": "child",
+      "dayTime": 32768,
+      "frames": 110,
+      "inputs": [
+        {
+          "from": 10,
+          "to": 50,
+          "stick": [
+            0,
+            28
+          ]
+        },
+        {
+          "from": 50,
+          "to": 70,
+          "stick": [
+            -40,
+            0
+          ]
+        },
+        {
+          "from": 80,
+          "to": 100,
+          "stick": [
+            0,
+            -28
+          ]
+        }
+      ],
+      "highlight": [
+        10,
+        70
+      ]
+    },
+    {
+      "name": "enemies",
+      "entrance": 205,
+      "age": "adult",
+      "dayTime": 32768,
+      "frames": 160,
+      "spawns": [
+        {
+          "id": 2,
+          "params": 1,
+          "offset": [
+            0,
+            0,
+            220
+          ]
+        }
+      ],
+      "inputs": [
+        {
+          "from": 0,
+          "to": 160,
+          "buttons": [
+            "R"
+          ]
+        },
+        {
+          "from": 70,
+          "to": 72,
+          "buttons": [
+            "B"
+          ]
+        },
+        {
+          "from": 72,
+          "to": 74,
+          "buttons": []
+        },
+        {
+          "from": 95,
+          "to": 97,
+          "buttons": [
+            "B"
+          ]
+        },
+        {
+          "from": 120,
+          "to": 122,
+          "buttons": [
+            "B"
+          ]
+        }
+      ],
+      "highlight": [
+        60,
+        160
+      ]
+    }
+  ],
+  "variants": [
+    {
+      "name": "original",
+      "cvars": {
+        "gSettings.ModernAnimation.Enabled": 0
+      }
+    },
+    {
+      "name": "modern",
+      "cvars": {
+        "gSettings.ModernAnimation.Enabled": 1
+      }
+    }
+  ]
+}

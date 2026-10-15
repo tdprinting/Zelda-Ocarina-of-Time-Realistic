@@ -1,0 +1,109 @@
+{
+  "warmupTicks": 60,
+  "seed": 24301,
+  "cvars": {
+    "gSettings.InterpolationFPS": 20,
+    "gSettings.ModernRendering.Materials": 1,
+    "gSettings.ModernRendering.Lighting": 1
+  },
+  "variants": [
+    {
+      "name": "original",
+      "cvars": {
+        "gSettings.ModernAnimation.NpcFaces": 0,
+        "gSettings.ModernAnimation.NpcFaceForceMood": -1
+      }
+    },
+    {
+      "name": "modern",
+      "cvars": {
+        "gSettings.ModernAnimation.NpcFaces": 1,
+        "gSettings.ModernAnimation.NpcFaceForceMood": -1
+      }
+    },
+    {
+      "name": "joy",
+      "cvars": {
+        "gSettings.ModernAnimation.NpcFaces": 1,
+        "gSettings.ModernAnimation.NpcFaceForceMood": 2
+      }
+    },
+    {
+      "name": "angry",
+      "cvars": {
+        "gSettings.ModernAnimation.NpcFaces": 1,
+        "gSettings.ModernAnimation.NpcFaceForceMood": 3
+      }
+    },
+    {
+      "name": "strain",
+      "cvars": {
+        "gSettings.ModernAnimation.NpcFaces": 1,
+        "gSettings.ModernAnimation.NpcFaceForceMood": 4
+      }
+    },
+    {
+      "name": "worried",
+      "cvars": {
+        "gSettings.ModernAnimation.NpcFaces": 1,
+        "gSettings.ModernAnimation.NpcFaceForceMood": 6
+      }
+    },
+    {
+      "name": "sad",
+      "cvars": {
+        "gSettings.ModernAnimation.NpcFaces": 1,
+        "gSettings.ModernAnimation.NpcFaceForceMood": 9
+      }
+    },
+    {
+      "name": "sleepy",
+      "cvars": {
+        "gSettings.ModernAnimation.NpcFaces": 1,
+        "gSettings.ModernAnimation.NpcFaceForceMood": 10
+      }
+    },
+    {
+      "name": "surprise",
+      "cvars": {
+        "gSettings.ModernAnimation.NpcFaces": 1,
+        "gSettings.ModernAnimation.NpcFaceForceMood": 8
+      }
+    }
+  ],
+  "clips": [
+    {
+      "name": "kokiri-moods",
+      "entrance": 238,
+      "age": "child",
+      "dayTime": 32768,
+      "frames": 40,
+      "captureEvery": 10,
+      "spawns": [
+        {
+          "id": 355,
+          "params": 1,
+          "offset": [
+            -25,
+            0,
+            70
+          ]
+        },
+        {
+          "id": 355,
+          "params": 7,
+          "offset": [
+            25,
+            0,
+            70
+          ]
+        }
+      ],
+      "inputs": [],
+      "highlight": [
+        0,
+        40
+      ]
+    }
+  ]
+}
