@@ -50,6 +50,8 @@ struct ShaderProgram {
     bool material;
     GLint materialParamsLocation;
     GLint materialMirrorLocation;
+    GLint eyeInfoLocation;
+    GLint faceLocation;
 };
 
 struct FramebufferOGL {
@@ -125,6 +127,7 @@ class GfxRenderingAPIOGL final : public GfxRenderingAPI {
     uint32_t CreateMaterialTexture(const uint8_t* rgba32Buf, uint32_t width, uint32_t height) override;
     void UpdateMaterialTexture(uint32_t textureId, const uint8_t* rgba32Buf, uint32_t width, uint32_t height) override;
     void SetMaterialState(const MaterialState& state) override;
+    void SetFaceState(const float state[FACE_STATE_FLOATS]) override;
     bool ReadFramebufferRGBA8(int fbId, uint32_t& width, uint32_t& height, std::vector<uint8_t>& out) override;
     bool SupportsAmbientOcclusion() override;
     void ApplyAmbientOcclusion(const AmbientOcclusionParams& params) override;
@@ -145,6 +148,7 @@ class GfxRenderingAPIOGL final : public GfxRenderingAPI {
     std::map<std::pair<uint64_t, uint64_t>, ShaderProgram> mShaderProgramPool;
     ModernLightingState mModernLightingState = {};
     MaterialState mMaterialState = {};
+    float mFaceState[FACE_STATE_FLOATS] = {};
     // Neutral stand-ins for maps a material doesn't provide: flat normal, white roughness-metal, no skin
     GLuint mMaterialDefaultTex[3] = {};
     // Starts at 1 so freshly created programs (serial 0) always receive the current state

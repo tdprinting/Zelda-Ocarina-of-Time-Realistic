@@ -99,6 +99,10 @@ void GfxRenderingAPIOGL::SetPerDrawUniforms() {
         const bool mirrorS = base.wrapS == GL_MIRRORED_REPEAT || base.wrapS == GL_MIRROR_CLAMP_TO_EDGE;
         const bool mirrorT = base.wrapT == GL_MIRRORED_REPEAT || base.wrapT == GL_MIRROR_CLAMP_TO_EDGE;
         glUniform2f(mCurrentShaderProgram->materialMirrorLocation, mirrorS ? 1.0f : 0.0f, mirrorT ? 1.0f : 0.0f);
+        if (mCurrentShaderProgram->eyeInfoLocation >= 0) {
+            glUniform4fv(mCurrentShaderProgram->eyeInfoLocation, EYE_INFO_FLOATS / 4, mMaterialState.eyeInfo);
+            glUniform4fv(mCurrentShaderProgram->faceLocation, FACE_STATE_FLOATS / 4, mFaceState);
+        }
     }
 
     if (mCurrentShaderProgram->usedTextures[0] || mCurrentShaderProgram->usedTextures[1]) {
@@ -333,7 +337,9 @@ std::string GfxRenderingAPIOGL::BuildFsShader(const CCFeatures& cc_features) {
         { "texture", "texture" },
         { "vOutColor", "vOutColor" },
 #elif defined(USE_OPENGLES)
-        { "GLSL_VERSION", "#version 300 es\nprecision mediump float;" },
+        // highp: mediump (fp16 on most mobile GPUs) cannot address texels on tiled ground textures, whose
+        // UVs run into the dozens, and breaks three-point filtering there
+        { "GLSL_VERSION", "#version 300 es\nprecision highp float;" },
         { "attr", "in" },
         { "highp", "highp" },
         { "opengles", true },
@@ -579,6 +585,8 @@ ShaderProgram* GfxRenderingAPIOGL::CreateAndLoadNewShader(uint64_t shader_id0, u
     prg->material = cc_features.opt_modern_lighting && cc_features.opt_material && cc_features.usedTextures[0];
     prg->materialParamsLocation = glGetUniformLocation(shader_program, "uMatParams");
     prg->materialMirrorLocation = glGetUniformLocation(shader_program, "uMatMirror");
+    prg->eyeInfoLocation = glGetUniformLocation(shader_program, "uEyeInfo");
+    prg->faceLocation = glGetUniformLocation(shader_program, "uFace");
 
     LoadShader(prg);
 
@@ -1237,6 +1245,10 @@ void GfxRenderingAPIOGL::SetMaterialState(const MaterialState& state) {
         }
     }
     mMaterialState = state;
+}
+
+void GfxRenderingAPIOGL::SetFaceState(const float state[FACE_STATE_FLOATS]) {
+    memcpy(mFaceState, state, sizeof(mFaceState));
 }
 
 void GfxRenderingAPIOGL::SetModernLightingState(const ModernLightingState& state) {

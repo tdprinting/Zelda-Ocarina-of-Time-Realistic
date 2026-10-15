@@ -1812,6 +1812,50 @@ void Interpreter::ProcessMaterialMapRefreshes() {
     }
 }
 
+// Mirrors GfxFaceParams in libultra/gbi.h, which the game fills in
+struct FaceParamsLayout {
+    float lookTarget[3];
+    float lookWeight;
+    float saccade[2];
+    float upperLid;
+    float lowerLid;
+    float tilt;
+    float pupil;
+    uint32_t flags;
+};
+static_assert(sizeof(FaceParamsLayout) == 44, "FaceParamsLayout must match GfxFaceParams");
+
+void Interpreter::SetFaceParams(const void* params) {
+    if (mFaceDebug) {
+        return;
+    }
+    float state[FACE_STATE_FLOATS] = {};
+    state[9] = 1.0f;
+    const auto* p = static_cast<const FaceParamsLayout*>(params);
+    if (p != nullptr && (p->flags & 1)) {
+        memcpy(state, p->lookTarget, sizeof(float) * 3);
+        state[3] = p->lookWeight;
+        state[4] = p->saccade[0];
+        state[5] = p->saccade[1];
+        state[6] = p->upperLid;
+        state[7] = p->lowerLid;
+        state[8] = p->tilt;
+        state[9] = p->pupil;
+        state[10] = 1.0f;
+    }
+    ApplyFaceState(state);
+}
+
+void Interpreter::ApplyFaceState(const float state[FACE_STATE_FLOATS]) {
+    if (memcmp(state, mFaceState, sizeof(mFaceState)) == 0) {
+        return;
+    }
+    // Triangles already queued were drawn with the previous face
+    Flush();
+    memcpy(mFaceState, state, sizeof(mFaceState));
+    mRapi->SetFaceState(mFaceState);
+}
+
 // Vanilla eye textures paint the eye together with the skin, lashes and often the brows around it. Find the
 // eyes in the decoded texels so only they get a cornea:
 // - the skin is the texture's most common color;
@@ -1831,6 +1875,9 @@ void Interpreter::BuildAutoEyeMask(const std::string& texturePath) {
         mask[i * 4 + 1] = mask[i * 4 + 2] = 128;
         mask[i * 4 + 3] = 255;
     }
+    // What expressive eyes need to repaint the eye: see MaterialState::eyeInfo
+    std::array<float, EYE_INFO_FLOATS> eyeInfo{};
+    uint32_t eyeCount = 0;
     auto bin = [&](uint32_t i) { return (px[i * 4] >> 4) << 8 | (px[i * 4 + 1] >> 4) << 4 | (px[i * 4 + 2] >> 4); };
     std::unordered_map<uint32_t, uint32_t> counts;
     for (uint32_t i = 0; i < w * h; i++) {
@@ -1857,6 +1904,7 @@ void Interpreter::BuildAutoEyeMask(const std::string& texturePath) {
     }
     for (int c = 0; c < 3; c++) {
         skin[c] /= std::max(skinTexels, 1u) * 255.0f;
+        eyeInfo[c] = skin[c];
     }
     auto rgb = [&](uint32_t i, int c) { return px[i * 4 + c] / 255.0f; };
     auto lumOf = [](float r, float g, float b) { return r * 0.3f + g * 0.59f + b * 0.11f; };
@@ -1898,6 +1946,12 @@ void Interpreter::BuildAutoEyeMask(const std::string& texturePath) {
     };
 
     const bool paleSkin = whiteOf(skin[0], skin[1], skin[2]);
+    // Each eye's frame (centre and half size in texels) and its index in eyeInfo
+    struct EyeFrame {
+        float cx, cy, rx, ry;
+        uint32_t index;
+    };
+    std::vector<EyeFrame> frames;
     for (int pass = paleSkin ? 1 : 0; pass < 2; pass++) {
         // Pass 0 starts from the whites, pass 1 from the pupils
         auto seed = [&](uint32_t i) {
@@ -1966,6 +2020,7 @@ void Interpreter::BuildAutoEyeMask(const std::string& texturePath) {
         }
         bool found = false;
         std::vector<uint8_t> eye(w * h);
+        std::vector<std::vector<uint8_t>> candidates;
         for (const auto& [root, b] : boxes) {
             const uint32_t bw = b.maxX - b.minX + 1, bh = b.maxY - b.minY + 1;
             // Pupils are round; long dark strokes are lashes or closed lids
@@ -2007,6 +2062,27 @@ void Interpreter::BuildAutoEyeMask(const std::string& texturePath) {
                     }
                 }
             }
+            candidates.push_back(eye);
+        }
+        // A white inside another eye (a catchlight painted on the iris) grows into that same eye: merge overlaps
+        for (size_t a = 0; a < candidates.size(); a++) {
+            for (size_t c = a + 1; c < candidates.size();) {
+                bool overlap = false;
+                for (uint32_t i = 0; i < w * h && !overlap; i++) {
+                    overlap = candidates[a][i] && candidates[c][i];
+                }
+                if (!overlap) {
+                    c++;
+                    continue;
+                }
+                for (uint32_t i = 0; i < w * h; i++) {
+                    candidates[a][i] |= candidates[c][i];
+                }
+                candidates.erase(candidates.begin() + c);
+                c = a + 1;
+            }
+        }
+        for (const auto& eye : candidates) {
             float minX = (float)w, minY = (float)h, maxX = 0, maxY = 0;
             for (uint32_t i = 0; i < w * h; i++) {
                 if (eye[i]) {
@@ -2016,14 +2092,105 @@ void Interpreter::BuildAutoEyeMask(const std::string& texturePath) {
                     maxY = std::max(maxY, (float)(i / w) + 1);
                 }
             }
+            // The grown region can reach into coloured lashes above the eye; frame the eye on its whites instead,
+            // leaving room above them for the iris, which the upper lid often lets rise past the whites
+            float wMinX = (float)w, wMinY = (float)h, wMaxX = 0, wMaxY = 0;
+            for (uint32_t i = 0; i < w * h; i++) {
+                if (eye[i] && isWhite(i) && skinDistance(i) > 0.12f) {
+                    wMinX = std::min(wMinX, (float)(i % w));
+                    wMaxX = std::max(wMaxX, (float)(i % w) + 1);
+                    wMinY = std::min(wMinY, (float)(i / w));
+                    wMaxY = std::max(wMaxY, (float)(i / w) + 1);
+                }
+            }
+            if (wMaxX > wMinX) {
+                minX = std::max(minX, wMinX - 1.0f);
+                maxX = std::min(maxX, wMaxX + 1.0f);
+                minY = std::max(minY, wMinY - 0.6f * (wMaxY - wMinY));
+                maxY = std::min(maxY, wMaxY + 1.0f);
+            }
             const float cx = (minX + maxX) * 0.5f, cy = (minY + maxY) * 0.5f;
             const float rx = std::max((maxX - minX) * 0.5f, 1.0f), ry = std::max((maxY - minY) * 0.5f, 1.0f);
+            // The eye: inside that frame's ellipse, whatever is not skin
+            auto inEye = [&](uint32_t i) {
+                const float ex = ((i % w) + 0.5f - cx) / rx, ey = ((i / w) + 0.5f - cy) / ry;
+                return ex * ex + ey * ey <= 1.0f && opaque(i) && (eye[i] || skinDistance(i) > 0.12f);
+            };
+            // Expressive eyes repaint eyes that have whites: record their sclera and iris colors, the iris size,
+            // and which side the nose is on (lashes and eyeliner flick out at the outer corner)
+            frames.push_back({ cx, cy, rx, ry, pass == 0 ? eyeCount : 0 });
+            if (pass == 0 && eyeCount < 2) {
+                float sclera[3] = { 0, 0, 0 }, iris[3] = { 0, 0, 0 }, tinted[3] = { 0, 0, 0 };
+                uint32_t scleraCount = 0, irisCount = 0, tintedCount = 0, darkCount = 0;
+                float darkX = 0, tMinX = (float)w, tMinY = (float)h, tMaxX = 0, tMaxY = 0;
+                for (uint32_t i = 0; i < w * h; i++) {
+                    const float ex = ((i % w) + 0.5f - cx) / rx, ey = ((i / w) + 0.5f - cy) / ry;
+                    if (lum(i) < 0.25f && opaque(i) && std::fabs(ey) < 1.5f && std::fabs(ex) < 1.5f) {
+                        darkX += ex;
+                        darkCount++;
+                    }
+                    if (!inEye(i)) {
+                        continue;
+                    }
+                    const bool inner = ex * ex + ey * ey < 0.7f;
+                    const float hi = std::max({ rgb(i, 0), rgb(i, 1), rgb(i, 2) });
+                    const float lo = std::min({ rgb(i, 0), rgb(i, 1), rgb(i, 2) });
+                    if (isWhite(i)) {
+                        for (int c = 0; c < 3; c++) {
+                            sclera[c] += rgb(i, c);
+                        }
+                        scleraCount++;
+                    } else if (lum(i) >= 0.06f && lum(i) < 0.5f && hi - lo > 0.12f &&
+                               (hueDiffers(i) || skinDistance(i) > 0.3f)) {
+                        // A tinted texel that is not skin: the iris
+                        for (int c = 0; c < 3; c++) {
+                            tinted[c] += rgb(i, c);
+                        }
+                        tintedCount++;
+                        tMinX = std::min(tMinX, (float)(i % w));
+                        tMaxX = std::max(tMaxX, (float)(i % w) + 1);
+                        tMinY = std::min(tMinY, (float)(i / w));
+                        tMaxY = std::max(tMaxY, (float)(i / w) + 1);
+                    }
+                    if (!isWhite(i) && inner && lum(i) >= 0.12f) {
+                        for (int c = 0; c < 3; c++) {
+                            iris[c] += rgb(i, c);
+                        }
+                        irisCount++;
+                    } else if (!isWhite(i) && inner) {
+                        irisCount++; // the pupil counts toward the iris size, not its color
+                    }
+                }
+                float* e = &eyeInfo[4 + eyeCount * 16];
+                e[0] = cx / w;
+                e[1] = cy / h;
+                e[2] = rx / w;
+                e[3] = ry / h;
+                for (int c = 0; c < 3; c++) {
+                    e[8 + c] = scleraCount > 0 ? sclera[c] / scleraCount : 0.9f;
+                }
+                if (tintedCount >= 3) {
+                    // The iris's own texels give its color, size and where it rests in the eye (eye space: half
+                    // sizes, y up)
+                    for (int c = 0; c < 3; c++) {
+                        e[4 + c] = tinted[c] / tintedCount;
+                    }
+                    e[7] = std::clamp(std::max(tMaxX - tMinX, tMaxY - tMinY) * 0.5f / ry, 0.35f, 0.95f);
+                    e[12] = std::clamp(((tMinX + tMaxX) * 0.5f - cx) / rx, -0.6f, 0.6f);
+                    e[13] = std::clamp(-((tMinY + tMaxY) * 0.5f - cy) / ry, -0.6f, 0.6f);
+                } else {
+                    // An untinted (dark) iris: the non-white middle of the eye
+                    for (int c = 0; c < 3; c++) {
+                        e[4 + c] = irisCount > 0 ? iris[c] / irisCount : 0.3f;
+                    }
+                    e[7] = std::clamp(std::sqrt(irisCount / 3.14159f) / ry, 0.35f, 0.95f);
+                }
+                e[11] = darkCount > 0 && darkX / darkCount > 0.0f ? -1.0f : 1.0f;
+                eyeCount++;
+            }
             for (uint32_t i = 0; i < w * h; i++) {
-                if (eye[i]) {
-                    const float ox = ((i % w) + 0.5f - cx) / rx, oy = ((i / w) + 0.5f - cy) / ry;
+                if (inEye(i)) {
                     mask[i * 4] = 255;
-                    mask[i * 4 + 1] = (uint8_t)std::clamp(128.0f + ox * 127.0f, 0.0f, 255.0f);
-                    mask[i * 4 + 2] = (uint8_t)std::clamp(128.0f + oy * 127.0f, 0.0f, 255.0f);
                 }
             }
         }
@@ -2031,11 +2198,41 @@ void Interpreter::BuildAutoEyeMask(const std::string& texturePath) {
             break;
         }
     }
+    eyeInfo[3] = (float)eyeCount;
+    // G, B: every texel's offset from the centre of the nearest eye, in half sizes / 2, and A: that eye's index.
+    // The shader reads the eye's coordinates from here, filtered exactly like the texture itself, so they follow
+    // whatever tiling, clamping and mirroring the draw uses.
+    for (uint32_t i = 0; !frames.empty() && i < w * h; i++) {
+        const EyeFrame* nearest = nullptr;
+        float nearestDistance = 0, ox = 0, oy = 0;
+        for (const EyeFrame& f : frames) {
+            const float fx = ((i % w) + 0.5f - f.cx) / f.rx, fy = ((i / w) + 0.5f - f.cy) / f.ry;
+            if (nearest == nullptr || fx * fx + fy * fy < nearestDistance) {
+                nearest = &f;
+                nearestDistance = fx * fx + fy * fy;
+                ox = fx;
+                oy = fy;
+            }
+        }
+        mask[i * 4 + 1] = (uint8_t)std::clamp(128.0f + ox * 63.5f, 0.0f, 255.0f);
+        mask[i * 4 + 2] = (uint8_t)std::clamp(128.0f + oy * 63.5f, 0.0f, 255.0f);
+        mask[i * 4 + 3] = nearest->index == 1 ? 255 : 0;
+    }
+    SPDLOG_DEBUG("Eye mask {}: {}x{}, {} eyes, eye 0 centre ({}, {}) half ({}, {}) iris r {} at ({}, {}) nose {}",
+                 texturePath, w, h, eyeCount, eyeInfo[4], eyeInfo[5], eyeInfo[6], eyeInfo[7], eyeInfo[11], eyeInfo[16],
+                 eyeInfo[17], eyeInfo[15]);
+    if (eyeCount == 2) {
+        // Both eyes in one texture: the nose is between them
+        eyeInfo[4 + 11] = eyeInfo[20] > eyeInfo[4] ? 1.0f : -1.0f;
+        eyeInfo[20 + 11] = -eyeInfo[4 + 11];
+    }
     const uint32_t id = mRapi->CreateMaterialTexture(mask.data(), w, h);
     mAutoEyeMasks[texturePath] = id;
+    mAutoEyeInfo[texturePath] = eyeInfo;
     auto loaded = mLoadedMaterials.find(texturePath);
     if (loaded != mLoadedMaterials.end()) {
         loaded->second->state.skinTex = id;
+        memcpy(loaded->second->state.eyeInfo, eyeInfo.data(), sizeof(loaded->second->state.eyeInfo));
         if (mBoundMaterial == loaded->second.get()) {
             mRapi->SetMaterialState(loaded->second->state);
         }
@@ -2080,6 +2277,10 @@ const Interpreter::LoadedMaterial* Interpreter::FindMaterial(Fast::Texture* reso
         // The mask is built when the texture is first decoded; until then the eye has no cornea
         auto mask = mAutoEyeMasks.find(path);
         material->state.skinTex = mask != mAutoEyeMasks.end() ? mask->second : 0;
+        auto info = mAutoEyeInfo.find(path);
+        if (info != mAutoEyeInfo.end()) {
+            memcpy(material->state.eyeInfo, info->second.data(), sizeof(material->state.eyeInfo));
+        }
         material->state.params[3] = -1.0f;
     }
     return (mLoadedMaterials[path] = std::move(material)).get();
@@ -5125,6 +5326,14 @@ bool gfx_set_fill_color_handler_rdp(F3DGfx** cmd0) {
     return false;
 }
 
+bool gfx_set_face_params_handler_custom(F3DGfx** cmd0) {
+    Interpreter* gfx = mInstance.lock().get();
+    F3DGfx* cmd = *cmd0;
+
+    gfx->SetFaceParams(cmd->words.w1 != 0 ? (const void*)gfx->SegAddr(cmd->words.w1) : nullptr);
+    return false;
+}
+
 bool gfx_set_intensity_handler_custom(F3DGfx** cmd0) {
     Interpreter* gfx = mInstance.lock().get();
     F3DGfx* cmd = *cmd0;
@@ -5406,9 +5615,10 @@ static constexpr UcodeHandler otrHandlers = {
     { OTR_G_DL_INDEX, { "G_DL_INDEX", gfx_dl_index_handler } },            // G_DL_INDEX (0x3d)
     { OTR_G_READFB, { "G_READFB", gfx_read_fb_handler_custom } },          // G_READFB (0x3e)
     { OTR_G_REGBLENDEDTEX,
-      { "G_REGBLENDEDTEX", gfx_register_blended_texture_handler_custom } },         // G_REGBLENDEDTEX (0x3f)
-    { OTR_G_SETINTENSITY, { "G_SETINTENSITY", gfx_set_intensity_handler_custom } }, // G_SETINTENSITY (0x40)
-    { OTR_G_MOVEMEM_HASH, { "OTR_G_MOVEMEM_HASH", gfx_movemem_handler_otr } },      // OTR_G_MOVEMEM_HASH
+      { "G_REGBLENDEDTEX", gfx_register_blended_texture_handler_custom } },             // G_REGBLENDEDTEX (0x3f)
+    { OTR_G_SETINTENSITY, { "G_SETINTENSITY", gfx_set_intensity_handler_custom } },     // G_SETINTENSITY (0x40)
+    { OTR_G_SETFACEPARAMS, { "G_SETFACEPARAMS", gfx_set_face_params_handler_custom } }, // G_SETFACEPARAMS (0x4b)
+    { OTR_G_MOVEMEM_HASH, { "OTR_G_MOVEMEM_HASH", gfx_movemem_handler_otr } },          // OTR_G_MOVEMEM_HASH
     { OTR_G_PUSH_SHADER, { "G_PUSH_SHADER", gfx_push_shader } },
     { OTR_G_POP_SHADER, { "G_POP_SHADER", gfx_pop_shader } },
     { RDP_G_LOADBLOCK_WIDE, { "G_LOADBLOCK_WIDE", gfx_load_block_wide_handler_rdp } }, // RDP_G_LOADBLOCK_WIDE (-15)
@@ -5730,6 +5940,26 @@ bool Interpreter::ViewportMatchesRendererResolution() {
 void Interpreter::StartFrame() {
     UpdateModernLightingSettings();
     ProcessMaterialMapRefreshes();
+    // Eyes start each frame vanilla until a G_SETFACEPARAMS says otherwise (or the testing CVars override it)
+    {
+        auto cvars = Ship::Context::GetRawInstance()->GetConsoleVariables();
+        mFaceDebug = cvars->GetInteger(CVAR_MODERN_FACE_DEBUG, 0) != 0;
+        float state[FACE_STATE_FLOATS] = {};
+        state[9] = 1.0f; // pupil
+        if (mFaceDebug) {
+            auto get = [&](const char* name, float def) {
+                return cvars->GetFloat((std::string(CVAR_MODERN_FACE_DEBUG_PREFIX) + name).c_str(), def);
+            };
+            state[4] = get("SaccadeX", 0.0f);
+            state[5] = get("SaccadeY", 0.0f);
+            state[6] = get("UpperLid", 0.0f);
+            state[7] = get("LowerLid", 0.0f);
+            state[8] = get("Tilt", 0.0f);
+            state[9] = get("Pupil", 1.0f);
+            state[10] = 1.0f;
+        }
+        ApplyFaceState(state);
+    }
     mWapi->GetDimensions(&mGfxCurrentWindowDimensions.width, &mGfxCurrentWindowDimensions.height, &mCurWindowPosX,
                          &mCurWindowPosY);
     if (mCurDimensions.height == 0) {

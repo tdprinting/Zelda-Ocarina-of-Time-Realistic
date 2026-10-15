@@ -30,6 +30,13 @@
 #ifndef CVAR_MODERN_AO_DEBUG
 #define CVAR_MODERN_AO_DEBUG "gSettings.ModernRendering.AmbientOcclusionDebug"
 #endif
+// Testing aid: force every expressive eye to these values (floats) instead of G_SETFACEPARAMS
+#ifndef CVAR_MODERN_FACE_DEBUG
+#define CVAR_MODERN_FACE_DEBUG "gSettings.ModernRendering.FaceDebug"
+#endif
+#ifndef CVAR_MODERN_FACE_DEBUG_PREFIX
+#define CVAR_MODERN_FACE_DEBUG_PREFIX "gSettings.ModernRendering.FaceDebug."
+#endif
 #ifndef CVAR_MODERN_MATERIALS
 #define CVAR_MODERN_MATERIALS "gSettings.ModernRendering.Materials"
 #endif

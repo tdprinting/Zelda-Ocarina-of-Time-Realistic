@@ -35,12 +35,23 @@ struct ModernLightingState {
 // Inputs for the screen-space ambient occlusion pass that runs after the opaque geometry.
 // Texture maps and parameters of a material (see Interpreter::MaterialDef). Texture ids come from
 // CreateMaterialTexture; 0 means "use the neutral default" (flat normal, white roughness-metal, no skin).
+#define EYE_INFO_FLOATS 36
+
 struct MaterialState {
     uint32_t normalTex;
     uint32_t roughnessMetalTex;
     uint32_t skinTex;
     float params[4]; // x: roughness multiplier, y: metalness multiplier, z: normal strength, w: skin strength
+    // Automatic eye masks: what the renderer found in the texture, in texture UV (0..1) space.
+    // [0]: skin rgb, eye count; then per eye (up to 2): centre uv, half size uv; iris rgb, iris radius (in half
+    // heights); sclera rgb, nose side (+1: towards +u); where the iris rests (eye space: half sizes from the
+    // centre, y up), unused
+    float eyeInfo[EYE_INFO_FLOATS];
 };
+
+// Expressive eyes, from G_SETFACEPARAMS: [0] look target xyz, look weight; [1] saccade xy, upper lid, lower lid;
+// [2] tilt, pupil, active, unused
+#define FACE_STATE_FLOATS 12
 
 struct AmbientOcclusionParams {
     float invP00, invP11; // reciprocal x/y focal scales of the scene projection
@@ -125,6 +136,8 @@ class GfxRenderingAPI {
         return 0;
     }
     virtual void UpdateMaterialTexture(uint32_t textureId, const uint8_t* rgba32Buf, uint32_t width, uint32_t height) {
+    }
+    virtual void SetFaceState(const float state[FACE_STATE_FLOATS]) {
     }
     virtual void SetMaterialState(const MaterialState& state) {
     }

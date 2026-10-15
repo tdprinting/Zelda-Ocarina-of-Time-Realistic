@@ -69,6 +69,39 @@ A mod pack replaces an entry by listing the same texture in its own manifest (HD
 own masks, for example). Manifests are read in name order and a later entry for the same texture wins, so
 give yours a name that sorts after `00-vanilla-eyes.json`.
 
+### Expressive eyes
+
+Eyes found by `"eyeMask": "auto"` can also be repainted as a live procedural eye: an iris and pupil that look
+around, eyelids that close, narrow or slant, and a pupil that widens or shrinks. The iris takes its color,
+size and resting spot from the vanilla texture, the lids take the skin color around the eye, and the eye's
+outline keeps the vanilla eyeliner. Nothing changes until a face is set; without one the vanilla eye texture
+is drawn as before.
+
+An actor sets its face with `G_SETFACEPARAMS` (opcode `0x4b`) right before drawing its head. The command's
+second word points at a `GfxFaceParams` (in `libultraship/libultra/gbi.h`) that must stay valid until the frame
+is drawn, so allocate it from the frame's graph pool:
+
+```c
+GfxFaceParams* face = Graph_Alloc(play->state.gfxCtx, sizeof(GfxFaceParams));
+face->lookTarget[0] = target.x; face->lookTarget[1] = target.y; face->lookTarget[2] = target.z;
+face->lookWeight = 1.0f;       // 0: ignore lookTarget
+face->saccade[0] = 0.0f;       // x: towards the character's left, y: up; -1..1 of the eye's half width
+face->saccade[1] = 0.0f;
+face->upperLid = 0.0f;         // 0 open .. 1 closed
+face->lowerLid = 0.0f;         // 0 .. 1, rises along an upward curve (smiles, squints)
+face->tilt = 0.0f;             // >0 slants the upper lid down towards the nose (anger), <0 away (sadness)
+face->pupil = 1.0f;            // pupil size, 1 = normal
+face->flags = G_FACEPARAMS_ACTIVE;
+gSPSetFaceParams(POLY_OPA_DISP++, face);
+/* ... draw the head ... */
+gSPSetFaceParams(POLY_OPA_DISP++, NULL); // back to vanilla eyes
+```
+
+The face resets to vanilla at the start of every frame. For testing without an actor, the
+`gSettings.ModernRendering.FaceDebug` CVar applies one face to every eye, set by
+`gSettings.ModernRendering.FaceDebug.SaccadeX`, `.SaccadeY`, `.UpperLid`, `.LowerLid`, `.Tilt` and `.Pupil`.
+`tools/render-test/eyes.json` renders Link and a Kokiri girl in ten poses with it.
+
 ## Changing maps at runtime
 
 A mod can rewrite a map while the game runs (wet cloth darkening and turning glossy, mud building up).

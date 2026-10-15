@@ -17,7 +17,8 @@ void main() {
 #else
 in vec2 vUv;
 
-uniform sampler2D uDepth;
+// highp: GLES samplers default to lowp, which quantizes depth into bands
+uniform highp sampler2D uDepth;
 uniform vec4 uProj;   // x: 1/P00, y: 1/P11, z: A, w: B  (view distance d = B / (ndcZ + A))
 uniform vec4 uParams; // x: radius (world units), y: intensity, z: bias (fraction of radius), w: depth NDC scale
 uniform vec2 uTexel;  // 1 / full-resolution framebuffer size

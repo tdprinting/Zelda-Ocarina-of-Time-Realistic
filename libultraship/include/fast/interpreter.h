@@ -13,6 +13,7 @@
 #include <memory>
 #include <mutex>
 #include <set>
+#include <array>
 
 #include "fast/lus_gbi.h"
 #include "fast/types.h"
@@ -607,6 +608,8 @@ class Interpreter {
     const LoadedMaterial* FindMaterial(Fast::Texture* resource);
     uint32_t LoadMaterialMap(const std::string& path);
     void BuildAutoEyeMask(const std::string& texturePath);
+    void SetFaceParams(const void* params); // a GfxFaceParams, or null
+    void ApplyFaceState(const float state[FACE_STATE_FLOATS]);
     bool ReadMaterialMap(const std::string& path, std::vector<uint8_t>& rgba, uint32_t& width, uint32_t& height);
     // Re-uploads a material map (by its path in the manifest) at the start of the next frame, for mods that
     // rewrite a map's pixels at runtime. Safe to call from any thread.
@@ -623,6 +626,10 @@ class Interpreter {
     const LoadedMaterial* mMaterialLastResult = nullptr;
     // "eyeMask": "auto": masks built from each eye texture's decoded texels, by texture path
     std::unordered_map<std::string, uint32_t> mAutoEyeMasks;
+    std::unordered_map<std::string, std::array<float, EYE_INFO_FLOATS>> mAutoEyeInfo;
+    // Expressive eyes (G_SETFACEPARAMS); see FACE_STATE_FLOATS
+    float mFaceState[FACE_STATE_FLOATS] = {};
+    bool mFaceDebug = false;
     const uint8_t* mLastUploadData = nullptr;
     uint32_t mLastUploadWidth = 0;
     uint32_t mLastUploadHeight = 0;

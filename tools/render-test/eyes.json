@@ -1,0 +1,150 @@
+{
+  "warmupTicks": 100,
+  "settleTicks": 4,
+  "baseline": "vanilla-eyes",
+  "cvars": {
+    "gSettings.ModernRendering.Lighting": 1,
+    "gSettings.ModernRendering.AmbientOcclusion": 0,
+    "gSettings.ModernRendering.AmbientOcclusionDebug": 0
+  },
+  "scenes": [
+    {
+      "name": "links-house",
+      "entrance": 187,
+      "age": "child",
+      "dayTime": 32768
+    },
+    {
+      "name": "kokiri-shop",
+      "entrance": 193,
+      "age": "child",
+      "dayTime": 32768
+    }
+  ],
+  "variants": [
+    {
+      "name": "vanilla-eyes",
+      "cvars": {
+        "gSettings.ModernRendering.Materials": 1,
+        "gSettings.ModernRendering.FaceDebug": 0
+      }
+    },
+    {
+      "name": "forward",
+      "cvars": {
+        "gSettings.ModernRendering.Materials": 1,
+        "gSettings.ModernRendering.FaceDebug": 1,
+        "gSettings.ModernRendering.FaceDebug.SaccadeX": 0.0,
+        "gSettings.ModernRendering.FaceDebug.SaccadeY": 0.0,
+        "gSettings.ModernRendering.FaceDebug.UpperLid": 0.0,
+        "gSettings.ModernRendering.FaceDebug.LowerLid": 0.0,
+        "gSettings.ModernRendering.FaceDebug.Tilt": 0.0,
+        "gSettings.ModernRendering.FaceDebug.Pupil": 1.0
+      }
+    },
+    {
+      "name": "look-left",
+      "cvars": {
+        "gSettings.ModernRendering.Materials": 1,
+        "gSettings.ModernRendering.FaceDebug": 1,
+        "gSettings.ModernRendering.FaceDebug.SaccadeX": 0.7,
+        "gSettings.ModernRendering.FaceDebug.SaccadeY": 0.0,
+        "gSettings.ModernRendering.FaceDebug.UpperLid": 0.0,
+        "gSettings.ModernRendering.FaceDebug.LowerLid": 0.0,
+        "gSettings.ModernRendering.FaceDebug.Tilt": 0.0,
+        "gSettings.ModernRendering.FaceDebug.Pupil": 1.0
+      }
+    },
+    {
+      "name": "look-up-right",
+      "cvars": {
+        "gSettings.ModernRendering.Materials": 1,
+        "gSettings.ModernRendering.FaceDebug": 1,
+        "gSettings.ModernRendering.FaceDebug.SaccadeX": -0.5,
+        "gSettings.ModernRendering.FaceDebug.SaccadeY": 0.5,
+        "gSettings.ModernRendering.FaceDebug.UpperLid": 0.0,
+        "gSettings.ModernRendering.FaceDebug.LowerLid": 0.0,
+        "gSettings.ModernRendering.FaceDebug.Tilt": 0.0,
+        "gSettings.ModernRendering.FaceDebug.Pupil": 1.0
+      }
+    },
+    {
+      "name": "half-closed",
+      "cvars": {
+        "gSettings.ModernRendering.Materials": 1,
+        "gSettings.ModernRendering.FaceDebug": 1,
+        "gSettings.ModernRendering.FaceDebug.SaccadeX": 0.0,
+        "gSettings.ModernRendering.FaceDebug.SaccadeY": 0.0,
+        "gSettings.ModernRendering.FaceDebug.UpperLid": 0.5,
+        "gSettings.ModernRendering.FaceDebug.LowerLid": 0.0,
+        "gSettings.ModernRendering.FaceDebug.Tilt": 0.0,
+        "gSettings.ModernRendering.FaceDebug.Pupil": 1.0
+      }
+    },
+    {
+      "name": "closed",
+      "cvars": {
+        "gSettings.ModernRendering.Materials": 1,
+        "gSettings.ModernRendering.FaceDebug": 1,
+        "gSettings.ModernRendering.FaceDebug.SaccadeX": 0.0,
+        "gSettings.ModernRendering.FaceDebug.SaccadeY": 0.0,
+        "gSettings.ModernRendering.FaceDebug.UpperLid": 1.0,
+        "gSettings.ModernRendering.FaceDebug.LowerLid": 0.0,
+        "gSettings.ModernRendering.FaceDebug.Tilt": 0.0,
+        "gSettings.ModernRendering.FaceDebug.Pupil": 1.0
+      }
+    },
+    {
+      "name": "angry",
+      "cvars": {
+        "gSettings.ModernRendering.Materials": 1,
+        "gSettings.ModernRendering.FaceDebug": 1,
+        "gSettings.ModernRendering.FaceDebug.SaccadeX": 0.0,
+        "gSettings.ModernRendering.FaceDebug.SaccadeY": 0.0,
+        "gSettings.ModernRendering.FaceDebug.UpperLid": 0.25,
+        "gSettings.ModernRendering.FaceDebug.LowerLid": 0.0,
+        "gSettings.ModernRendering.FaceDebug.Tilt": 0.8,
+        "gSettings.ModernRendering.FaceDebug.Pupil": 1.0
+      }
+    },
+    {
+      "name": "sad",
+      "cvars": {
+        "gSettings.ModernRendering.Materials": 1,
+        "gSettings.ModernRendering.FaceDebug": 1,
+        "gSettings.ModernRendering.FaceDebug.SaccadeX": 0.0,
+        "gSettings.ModernRendering.FaceDebug.SaccadeY": 0.0,
+        "gSettings.ModernRendering.FaceDebug.UpperLid": 0.2,
+        "gSettings.ModernRendering.FaceDebug.LowerLid": 0.0,
+        "gSettings.ModernRendering.FaceDebug.Tilt": -0.8,
+        "gSettings.ModernRendering.FaceDebug.Pupil": 1.0
+      }
+    },
+    {
+      "name": "smile",
+      "cvars": {
+        "gSettings.ModernRendering.Materials": 1,
+        "gSettings.ModernRendering.FaceDebug": 1,
+        "gSettings.ModernRendering.FaceDebug.SaccadeX": 0.0,
+        "gSettings.ModernRendering.FaceDebug.SaccadeY": 0.0,
+        "gSettings.ModernRendering.FaceDebug.UpperLid": 0.2,
+        "gSettings.ModernRendering.FaceDebug.LowerLid": 0.55,
+        "gSettings.ModernRendering.FaceDebug.Tilt": 0.0,
+        "gSettings.ModernRendering.FaceDebug.Pupil": 1.0
+      }
+    },
+    {
+      "name": "fear",
+      "cvars": {
+        "gSettings.ModernRendering.Materials": 1,
+        "gSettings.ModernRendering.FaceDebug": 1,
+        "gSettings.ModernRendering.FaceDebug.SaccadeX": 0.0,
+        "gSettings.ModernRendering.FaceDebug.SaccadeY": 0.0,
+        "gSettings.ModernRendering.FaceDebug.UpperLid": 0.0,
+        "gSettings.ModernRendering.FaceDebug.LowerLid": 0.0,
+        "gSettings.ModernRendering.FaceDebug.Tilt": 0.0,
+        "gSettings.ModernRendering.FaceDebug.Pupil": 0.55
+      }
+    }
+  ]
+}
