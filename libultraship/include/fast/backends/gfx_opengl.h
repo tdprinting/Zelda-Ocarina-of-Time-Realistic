@@ -56,6 +56,8 @@ struct FramebufferOGL {
     bool invertY;
 
     GLuint fbo, clrbuf, clrbufMsaa, rbo;
+    // Sampleable depth used instead of rbo when the framebuffer is not multisampled
+    GLuint depthTex;
 };
 
 struct TextureInfo {
@@ -114,6 +116,9 @@ class GfxRenderingAPIOGL final : public GfxRenderingAPI {
     ImTextureID GetTextureById(int id) override;
     bool SupportsModernLighting() override;
     void SetModernLightingState(const ModernLightingState& state) override;
+    bool ReadFramebufferRGBA8(int fbId, uint32_t& width, uint32_t& height, std::vector<uint8_t>& out) override;
+    bool SupportsAmbientOcclusion() override;
+    void ApplyAmbientOcclusion(const AmbientOcclusionParams& params) override;
 
   private:
     void SetUniforms(ShaderProgram* prg) const;
@@ -132,6 +137,19 @@ class GfxRenderingAPIOGL final : public GfxRenderingAPI {
     ModernLightingState mModernLightingState = {};
     // Starts at 1 so freshly created programs (serial 0) always receive the current state
     uint32_t mModernLightingSerial = 1;
+
+    struct AoProgram {
+        GLuint id = 0;
+        GLint pos = -1, depth = -1, proj = -1, params = -1, texel = -1, ao = -1, aoTexel = -1;
+    };
+    bool CreateAmbientOcclusionPrograms();
+    AoProgram mAoPass;
+    AoProgram mAoBlurPass;
+    bool mAoProgramFailed = false;
+    GLuint mAoFbo = 0;
+    GLuint mAoTex = 0;
+    uint32_t mAoWidth = 0;
+    uint32_t mAoHeight = 0;
     ShaderProgram* mCurrentShaderProgram;
     ShaderProgram* mLastLoadedShader = nullptr;
 

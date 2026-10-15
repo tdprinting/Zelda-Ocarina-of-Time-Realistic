@@ -8,6 +8,7 @@
 #include "UIWidgets.hpp"
 #include <ship/controller/controldeck/ControlDeck.h>
 #include <ship/Context.h>
+#include <fast/ModernRenderingCVars.h>
 
 extern "C" {
 #include "include/z64audio.h"
@@ -459,7 +460,7 @@ void SohMenu::AddMenuSettings() {
                      .Tooltip("Brightness of light highlights on characters, items and weapons.")
                      .Min(0.0f)
                      .Max(2.0f)
-                     .DefaultValue(0.35f)
+                     .DefaultValue(0.2f)
                      .Format("%.2f"));
     AddWidget(path, "Specular Sharpness: %.0f", WIDGET_CVAR_SLIDER_FLOAT)
         .CVar(CVAR_MODERN_LIGHTING_SHININESS)
@@ -481,6 +482,34 @@ void SohMenu::AddMenuSettings() {
                      .Max(1.0f)
                      .DefaultValue(0.2f)
                      .Format("%.2f"));
+    AddWidget(path, "Ambient Occlusion", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_MODERN_AO)
+        .RaceDisable(false)
+        .Options(CheckboxOptions()
+                     .Tooltip("Darkens creases, corners and contact points using the depth buffer. "
+                              "Not applied while MSAA is above 1. OpenGL renderer only.")
+                     .DefaultValue(true));
+    auto hideWithoutAO = [](WidgetInfo& info) { info.isHidden = !CVarGetInteger(CVAR_MODERN_AO, 1); };
+    AddWidget(path, "Occlusion Radius: %.0f", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar(CVAR_MODERN_AO_RADIUS)
+        .RaceDisable(false)
+        .PreFunc(hideWithoutAO)
+        .Options(FloatSliderOptions()
+                     .Tooltip("How far, in game units, surfaces shadow each other.")
+                     .Min(5.0f)
+                     .Max(150.0f)
+                     .DefaultValue(70.0f)
+                     .Format("%.0f"));
+    AddWidget(path, "Occlusion Strength: %.2f", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar(CVAR_MODERN_AO_INTENSITY)
+        .RaceDisable(false)
+        .PreFunc(hideWithoutAO)
+        .Options(FloatSliderOptions().Min(0.0f).Max(4.0f).DefaultValue(2.0f).Format("%.2f"));
+    AddWidget(path, "Show Occlusion Only", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_MODERN_AO_DEBUG)
+        .RaceDisable(false)
+        .PreFunc(hideWithoutAO)
+        .Options(CheckboxOptions().Tooltip("Debug view: shows the occlusion term instead of the scene."));
 
     path.column = SECTION_COLUMN_2;
     AddWidget(path, "Advanced Graphics Options", WIDGET_SEPARATOR_TEXT);

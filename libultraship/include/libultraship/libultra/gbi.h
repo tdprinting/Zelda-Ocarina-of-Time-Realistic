@@ -4307,5 +4307,10 @@ typedef union Gfx {
 #define gDPNoOpOpenDisp(pkt, file, line) gDma1p(pkt, G_NOOP, file, line, 7)
 #define gDPNoOpCloseDisp(pkt, file, line) gDma1p(pkt, G_NOOP, file, line, 8)
 #define gDPNoOpTag3(pkt, type, data, n) gDma1p(pkt, G_NOOP, data, n, type)
+// Marks the end of the opaque geometry so the renderer can run passes such as ambient occlusion
+#ifndef G_NOOP_TYPE_OPAQUE_END
+#define G_NOOP_TYPE_OPAQUE_END 0x40
+#endif
+#define gDPNoOpOpaqueEnd(pkt) gDma1p(pkt, G_NOOP, 0, 0, G_NOOP_TYPE_OPAQUE_END)
 
 #endif

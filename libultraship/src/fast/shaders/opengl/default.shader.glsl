@@ -170,6 +170,9 @@
             s += uLightColor[i] * (pow(max(dot(n, h), 0.0), power) * norm * ndl);
         }
         float fresnel = 1.0 - clamp(dot(n, v), 0.0, 1.0);
+        // Rim is for silhouettes: fade it out on upward-facing surfaces (floors, terrain), which are
+        // otherwise seen at grazing angles and wash out
+        fresnel *= 1.0 - clamp(n.y, 0.0, 1.0);
         vec3 rim = (uLightAmbient + (uLightCount > 0 ? uLightColor[0] : vec3(0.0))) *
                    (fresnel * fresnel * fresnel * uLightParams.w);
         return s * uLightParams.y + rim;

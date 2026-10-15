@@ -37,6 +37,7 @@
 #include "ship/utils/Utils.h"
 #include "ship/Context.h"
 #include "ship/config/ConsoleVariable.h"
+#include "fast/ModernRenderingCVars.h"
 
 #include "libultraship/libultra/os.h"
 
@@ -1527,9 +1528,11 @@ void Interpreter::GfxSpMatrix(uint8_t parameters, const int32_t* addr) {
         if (parameters & mtx_load) {
             memcpy(mRsp->P_matrix, matrix, sizeof(matrix));
             mEyePosDirty = true;
+            mSceneProjectionDirty = true;
         } else {
             MatrixMul(mRsp->P_matrix, matrix, mRsp->P_matrix);
             mEyePosDirty = true;
+            mSceneProjectionDirty = true;
         }
     } else { // G_MTX_MODELVIEW
         if ((parameters & mtx_push) && mRsp->modelview_matrix_stack_size < 11) {
@@ -1588,16 +1591,66 @@ void Interpreter::AdjustWidthHeightForScale(uint32_t& width, uint32_t& height, u
     }
 }
 
+void Interpreter::OnOpaquePassEnd() {
+    // Only the game framebuffer, and only once a perspective projection has been seen this frame
+    if (!mModernAOEnabled || mFbActive || !mRendersToFb || !mSceneProjectionValid) {
+        return;
+    }
+    Flush();
+
+    // Row-vector view-projection: clip_c = sum_i p_i * P[i][c] + P[3][c]. With a rigid view matrix, the w column
+    // is (-viewZ, -tz) and the z column is (A * viewZ, A * tz + B), so view distance d = B / (ndcZ + A).
+    const float(*P)[4] = mSceneProjection;
+    const float wLen2 = P[0][3] * P[0][3] + P[1][3] * P[1][3] + P[2][3] * P[2][3];
+    if (wLen2 < 1e-12f) {
+        return;
+    }
+    const float wLen = sqrtf(wLen2);
+    AmbientOcclusionParams params = {};
+    params.depthA = -(P[0][2] * P[0][3] + P[1][2] * P[1][3] + P[2][2] * P[2][3]) / wLen2;
+    params.depthB = (P[3][2] + params.depthA * P[3][3]) / wLen;
+    // Focal scales; x is narrowed for widescreen the same way vertices are (AdjXForAspectRatio)
+    const float p00 = sqrtf(P[0][0] * P[0][0] + P[1][0] * P[1][0] + P[2][0] * P[2][0]) / wLen;
+    const float p11 = sqrtf(P[0][1] * P[0][1] + P[1][1] * P[1][1] + P[2][1] * P[2][1]) / wLen;
+    const float p00Adjusted = AdjXForAspectRatio(p00);
+    if (p00Adjusted < 1e-6f || p11 < 1e-6f) {
+        return;
+    }
+    params.invP00 = 1.0f / p00Adjusted;
+    params.invP11 = 1.0f / p11;
+    params.radius = mModernAORadius;
+    params.intensity = mModernAOIntensity;
+    params.bias = 0.03f;
+    params.debugView = mModernAODebug;
+    mRapi->ApplyAmbientOcclusion(params);
+
+    // The pass changed viewport, scissor and blend state behind the interpreter's back
+    mRenderingState.viewport = {};
+    mRenderingState.scissor = {};
+    mRdp->viewport_or_scissor_changed = true;
+}
+
+void Interpreter::RequestFrameCapture(const std::string& path) {
+    mPendingCapturePath = path;
+}
+
 void Interpreter::UpdateModernLightingSettings() {
     auto cvars = Ship::Context::GetRawInstance()->GetConsoleVariables();
     const bool enabled = mRapi->SupportsModernLighting() &&
                          cvars->GetInteger(CVAR_MODERN_LIGHTING, 1) != 0;
     const float params[4] = {
         cvars->GetFloat(CVAR_MODERN_LIGHTING_WRAP, 0.25f),
-        cvars->GetFloat(CVAR_MODERN_LIGHTING_SPECULAR, 0.35f),
+        cvars->GetFloat(CVAR_MODERN_LIGHTING_SPECULAR, 0.2f),
         cvars->GetFloat(CVAR_MODERN_LIGHTING_SHININESS, 24.0f),
         cvars->GetFloat(CVAR_MODERN_LIGHTING_RIM, 0.2f),
     };
+    mModernAOEnabled = mRapi->SupportsAmbientOcclusion() && cvars->GetInteger(CVAR_MODERN_AO, 1) != 0;
+    mModernAODebug = cvars->GetInteger(CVAR_MODERN_AO_DEBUG, 0) != 0;
+    mModernAORadius = cvars->GetFloat(CVAR_MODERN_AO_RADIUS, 70.0f);
+    mModernAOIntensity = cvars->GetFloat(CVAR_MODERN_AO_INTENSITY, 2.0f);
+    mSceneProjectionValid = false;
+    mSceneProjectionDirty = true;
+
     if (enabled != mModernLightingEnabled || memcmp(params, mModernLightingParams, sizeof(params)) != 0) {
         mModernLightingEnabled = enabled;
         memcpy(mModernLightingParams, params, sizeof(params));
@@ -2039,6 +2092,16 @@ void Interpreter::GfxSpTri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx
     }
 
     const bool use_modern_lighting = UseModernLighting(is_rect);
+
+    // Remember the projection of depth-writing 3D geometry in the game framebuffer for screen-space passes
+    if (mSceneProjectionDirty && !is_rect && !mFbActive && (mRdp->other_mode_l & Z_UPD)) {
+        const float(*P)[4] = mRsp->P_matrix;
+        if (fabsf(P[0][3]) + fabsf(P[1][3]) + fabsf(P[2][3]) > 1e-6f) {
+            memcpy(mSceneProjection, P, sizeof(mSceneProjection));
+            mSceneProjectionValid = true;
+        }
+        mSceneProjectionDirty = false;
+    }
     if (use_modern_lighting) {
         cc_options |= SHADER_OPT_MODERN_LIGHTING;
     }
@@ -3490,6 +3553,8 @@ bool gfx_noop_handler_f3dex2(F3DGfx** cmd0) {
     uint32_t l = C0(0, 16);
     if (p == 7) {
         g_exec_stack.openDisp(filename, l);
+    } else if (p == G_NOOP_TYPE_OPAQUE_END) {
+        mInstance.lock()->OnOpaquePassEnd();
     } else if (p == 8) {
         if (g_exec_stack.disp_stack.size() == 0) {
             SPDLOG_WARN("CLOSE_DISPS without matching open {}:{}", p, l);
@@ -5222,9 +5287,11 @@ void Interpreter::StartFrame() {
 
     mPrvDimensions = mCurDimensions;
     mPrevNativeDimensions = mNativeDimensions;
-    if (!ViewportMatchesRendererResolution() || mMsaaLevel > 1) {
+    // Ambient occlusion samples the game framebuffer's depth, so it needs the offscreen, single-sampled target
+    const bool aoNeedsFb = mModernAOEnabled && mMsaaLevel <= 1;
+    if (!ViewportMatchesRendererResolution() || mMsaaLevel > 1 || aoNeedsFb) {
         mRendersToFb = true;
-        if (!ViewportMatchesRendererResolution()) {
+        if (!ViewportMatchesRendererResolution() || aoNeedsFb) {
             mRapi->UpdateFramebufferParameters(mGameFb, mCurDimensions.width, mCurDimensions.height, mMsaaLevel, true,
                                                true, true, true);
         } else {
@@ -5328,6 +5395,24 @@ void Interpreter::Run(Gfx* commands, const std::unordered_map<Mtx*, MtxF>& mtx_r
     Flush();
     mGfxFrameBuffer = 0;
     currentDir = std::stack<std::string>();
+
+    if (!mPendingCapturePath.empty()) {
+        std::vector<uint8_t> pixels;
+        uint32_t width = 0, height = 0;
+        if (mRapi->ReadFramebufferRGBA8(mRendersToFb ? mGameFb : 0, width, height, pixels)) {
+            FILE* f = fopen(mPendingCapturePath.c_str(), "wb");
+            if (f != nullptr) {
+                fprintf(f, "P6\n%u %u\n255\n", width, height);
+                for (size_t i = 0; i < (size_t)width * height; i++) {
+                    fwrite(&pixels[i * 4], 1, 3, f);
+                }
+                fclose(f);
+            }
+        } else {
+            SPDLOG_ERROR("Frame capture failed for {}", mPendingCapturePath);
+        }
+        mPendingCapturePath.clear();
+    }
 
     if (mRendersToFb) {
         mRapi->StartDrawToFramebuffer(0, 1);

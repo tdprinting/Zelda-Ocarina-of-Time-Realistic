@@ -300,6 +300,8 @@ void Graph_Update(GraphicsContext* gfxCtx, GameState* gameState) {
 
     gDPNoOpString(WORK_DISP++, "WORK_DISP 終了", 0);
     gDPNoOpString(POLY_OPA_DISP++, "POLY_OPA_DISP 終了", 0);
+    // Lets the renderer run passes that need only opaque geometry (ambient occlusion) before translucent draws
+    gDPNoOpOpaqueEnd(POLY_OPA_DISP++);
     gDPNoOpString(POLY_XLU_DISP++, "POLY_XLU_DISP 終了", 0);
     gDPNoOpString(OVERLAY_DISP++, "OVERLAY_DISP 終了", 0);
 

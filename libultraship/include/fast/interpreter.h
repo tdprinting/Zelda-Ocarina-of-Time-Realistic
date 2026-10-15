@@ -562,6 +562,10 @@ class Interpreter {
     const std::unordered_map<Mtx*, MtxF>* mCurMtxReplacements;
     bool mMarkerOn; // This was originally a debug feature. Now it seems to control s2dex?
 
+    // Saves the next rendered game frame (before the GUI is drawn) as a binary PPM. Used by render tests.
+    void RequestFrameCapture(const std::string& path);
+    std::string mPendingCapturePath;
+
     // Modern rendering: per-pixel lighting state, refreshed when N64 lights or the projection change
     void UpdateModernLightingSettings();
     bool UseModernLighting(bool isRect) const;
@@ -572,6 +576,16 @@ class Interpreter {
     float mEyePos[3] = {};
     bool mEyePosDirty = true;
     ModernLightingState mModernLightingState = {};
+
+    // Modern rendering: ambient occlusion after the opaque pass (signalled by a G_NOOP marker from the game)
+    void OnOpaquePassEnd();
+    bool mModernAOEnabled = false;
+    bool mModernAODebug = false;
+    float mModernAORadius = 0.0f;
+    float mModernAOIntensity = 0.0f;
+    float mSceneProjection[4][4] = {};
+    bool mSceneProjectionValid = false;
+    bool mSceneProjectionDirty = true;
     std::unordered_map<size_t, const char*> mShaders;
 
     typedef size_t ShaderId;

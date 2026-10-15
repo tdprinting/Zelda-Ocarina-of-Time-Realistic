@@ -4,6 +4,7 @@
 
 #include <unordered_map>
 #include <set>
+#include <vector>
 #include "imconfig.h"
 
 namespace Fast {
@@ -27,6 +28,16 @@ struct ModernLightingState {
     float eyePos[3];
     // x: diffuse wrap, y: specular strength, z: specular power, w: rim strength
     float params[4];
+};
+
+// Inputs for the screen-space ambient occlusion pass that runs after the opaque geometry.
+struct AmbientOcclusionParams {
+    float invP00, invP11; // reciprocal x/y focal scales of the scene projection
+    float depthA, depthB; // view distance d = depthB / (ndcZ + depthA)
+    float radius;         // world units
+    float intensity;
+    float bias;
+    bool debugView; // write the occlusion term instead of multiplying the scene
 };
 
 // A hash function used to hash a: pair<float, float>
@@ -97,6 +108,16 @@ class GfxRenderingAPI {
         return false;
     }
     virtual void SetModernLightingState(const ModernLightingState& state) {
+    }
+    // Darkens the currently bound framebuffer by screen-space ambient occlusion computed from its depth.
+    virtual bool SupportsAmbientOcclusion() {
+        return false;
+    }
+    virtual void ApplyAmbientOcclusion(const AmbientOcclusionParams& params) {
+    }
+    // Reads a framebuffer back as top-down RGBA8 rows. Used by automated render tests.
+    virtual bool ReadFramebufferRGBA8(int fbId, uint32_t& width, uint32_t& height, std::vector<uint8_t>& out) {
+        return false;
     }
 
   protected:
