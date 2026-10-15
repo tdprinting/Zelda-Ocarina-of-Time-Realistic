@@ -5,7 +5,9 @@
 
 #include "soh/ActorDB.h"
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
+#include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/ShipInit.hpp"
+#include "soh/frame_interpolation.h"
 
 extern "C" {
 #include "macros.h"
@@ -15,6 +17,12 @@ extern PlayState* gPlayState;
 
 void Player_UseItem(PlayState* play, Player* player, s32 item);
 void Player_Draw(Actor* actor, PlayState* play);
+void Interface_LoadActionLabel(InterfaceContext* interfaceCtx, u16 action, s16 loadOffset);
+void func_8008A994(InterfaceContext* interfaceCtx);
+float OTRGetAspectRatio(void);
+void OTRSetHudAspectRatioOverride(float aspectRatio);
+extern u8 gSlotAgeReqs[];
+extern u8 gEquipAgeReqs[][4];
 }
 
 #define CVAR_COOP_NAME CVAR_ENHANCEMENT("SplitScreenCoop.Enabled")
@@ -41,6 +49,17 @@ static Vec3f sP2ViewAt;
 static Vec3f sP2ViewUp;
 static f32 sP2ViewFovy;
 static bool sP2ViewValid = false;
+
+// Player 2's own A-button state (the do-action label and its flip animation). Everything else on Player 2's
+// HUD is shared save data and comes from Player 1's interface context.
+struct CoopHudState {
+    s16 actionFlipState; // InterfaceContext::unk_1EC
+    u16 actionShown;     // unk_1EE
+    u16 actionNext;      // unk_1F0
+    f32 actionFlipRot;   // unk_1F4
+    char* doActionSegment[3];
+};
+static CoopHudState sP2Hud;
 
 // #region Actor list helpers
 
@@ -229,6 +248,76 @@ static void Coop_WarpP2ToP1(PlayState* play) {
     }
 }
 
+// #region Player 2's HUD state
+
+static void Coop_InitP2Hud(PlayState* play) {
+    InterfaceContext* interfaceCtx = &play->interfaceCtx;
+    char** p1Segment = interfaceCtx->doActionSegment;
+
+    sP2Hud.actionFlipState = 0;
+    sP2Hud.actionShown = sP2Hud.actionNext = DO_ACTION_NONE;
+    sP2Hud.actionFlipRot = 0.0f;
+    for (s32 i = 0; i < 3; i++) {
+        sP2Hud.doActionSegment[i] = p1Segment[i];
+    }
+    interfaceCtx->doActionSegment = sP2Hud.doActionSegment;
+    Interface_LoadActionLabel(interfaceCtx, DO_ACTION_NONE, 0);
+    Interface_LoadActionLabel(interfaceCtx, DO_ACTION_NONE, 1);
+    interfaceCtx->doActionSegment = p1Segment;
+}
+
+// Points the interface context at Player 2's A-button state. Callers restore Player 1's context afterwards
+// (the update snapshot, or Coop_EndP2Hud for drawing).
+static void Coop_BeginP2Hud(PlayState* play) {
+    InterfaceContext* interfaceCtx = &play->interfaceCtx;
+
+    // The B-button label follows Player 1's sword state, which is shared.
+    sP2Hud.doActionSegment[2] = interfaceCtx->doActionSegment[2];
+    interfaceCtx->unk_1EC = sP2Hud.actionFlipState;
+    interfaceCtx->unk_1EE = sP2Hud.actionShown;
+    interfaceCtx->unk_1F0 = sP2Hud.actionNext;
+    interfaceCtx->unk_1F4 = sP2Hud.actionFlipRot;
+    interfaceCtx->doActionSegment = sP2Hud.doActionSegment;
+}
+
+// Keeps what Player 2's update did to the A button, and runs the label flip that Interface_Update runs for
+// Player 1 (see the unk_1EC state machine there).
+static void Coop_SaveP2Hud(PlayState* play) {
+    InterfaceContext* interfaceCtx = &play->interfaceCtx;
+
+    switch (interfaceCtx->unk_1EC) {
+        case 1:
+        case 3:
+            interfaceCtx->unk_1F4 += 31400.0f / WREG(5);
+            if (interfaceCtx->unk_1F4 >= 15700.0f) {
+                interfaceCtx->unk_1F4 = -15700.0f;
+                interfaceCtx->unk_1EC = 2;
+            }
+            break;
+        case 2:
+        case 4:
+            interfaceCtx->unk_1F4 += 31400.0f / WREG(5);
+            if (interfaceCtx->unk_1F4 >= 0.0f) {
+                interfaceCtx->unk_1F4 = 0.0f;
+                interfaceCtx->unk_1EC = 0;
+                interfaceCtx->unk_1EE = interfaceCtx->unk_1F0;
+                u16 action = interfaceCtx->unk_1EE;
+                if ((action == DO_ACTION_MAX) || (action == DO_ACTION_MAX + 1)) {
+                    action = DO_ACTION_NONE;
+                }
+                Interface_LoadActionLabel(interfaceCtx, action, 0);
+            }
+            break;
+    }
+
+    sP2Hud.actionFlipState = interfaceCtx->unk_1EC;
+    sP2Hud.actionShown = interfaceCtx->unk_1EE;
+    sP2Hud.actionNext = interfaceCtx->unk_1F0;
+    sP2Hud.actionFlipRot = interfaceCtx->unk_1F4;
+}
+
+// #endregion
+
 static void CoopPlayer_Init(Actor* thisx, PlayState* play) {
     Player* this_ = (Player*)thisx;
 
@@ -248,6 +337,7 @@ static void CoopPlayer_Init(Actor* thisx, PlayState* play) {
     this_->giObjectSegment = (void*)(((uintptr_t)sP2GiAlloc + 8) & ~0xF);
 
     play->func_11D54(this_, play);
+    Coop_InitP2Hud(play);
 
     // Set up Player 2's camera in the main camera's place, as Play_Init does for Player 1's.
     CoopSwap swap = Coop_BeginSwap(play, false, true);
@@ -314,7 +404,9 @@ static void CoopPlayer_Update(Actor* thisx, PlayState* play) {
         }
     }
 
+    Coop_BeginP2Hud(play);
     play->playerUpdate(sP2, play, &input);
+    Coop_SaveP2Hud(play);
 
     Coop_EndSwap(swap);
 
@@ -470,6 +562,431 @@ static void Coop_OnShouldActorUpdate(void* actorRef, bool* should) {
 
 // #endregion
 
+// #region Per-player pause menu
+
+// START opens a small menu in that player's half instead of the full pause screen. The game keeps running;
+// only the player with the menu open stops taking gameplay input. Items and gear are shared save data, so a
+// change made from either menu applies to both Links. Z in the menu opens the full pause screen (which
+// pauses both players, as usual).
+enum CoopMenuPage { COOP_MENU_ITEMS, COOP_MENU_GEAR };
+
+struct CoopMenu {
+    bool open;
+    s8 page;
+    s8 cursorX;
+    s8 cursorY;
+    s8 stickRepeatTimer;
+};
+static CoopMenu sMenus[2];
+
+#define COOP_MENU_ITEM_COLS 6
+#define COOP_MENU_ITEM_ROWS 4
+#define COOP_MENU_GEAR_COLS 3
+#define COOP_MENU_GEAR_ROWS 4
+
+static void Coop_PlaySfx(u16 sfxId) {
+    Audio_PlaySfxGeneral(sfxId, &gSfxDefaultPos, 4, &gSfxDefaultFreqAndVolScale, &gSfxDefaultFreqAndVolScale,
+                         &gSfxDefaultReverb);
+}
+
+static bool Coop_SlotMeetsAgeReq(s32 slot) {
+    return GameInteractor_Should(VB_SLOT_MEETS_AGE_REQ,
+                                 (gSlotAgeReqs[slot] == 9) || (gSlotAgeReqs[slot] == gSaveContext.linkAge), slot);
+}
+
+static bool Coop_EquipMeetsAgeReq(s32 type, s32 value) {
+    return GameInteractor_Should(VB_PLAYER_MEETS_AGE_REQ,
+                                 (gEquipAgeReqs[type][value] == 9) ||
+                                     (gEquipAgeReqs[type][value] == gSaveContext.linkAge),
+                                 gEquipAgeReqs[type][value]);
+}
+
+// The icon shown for a gear cell, or ITEM_NONE when that piece is not owned.
+static s32 Coop_GearItem(s32 type, s32 index) {
+    if (CHECK_OWNED_EQUIP(type, index)) {
+        if ((type == EQUIP_TYPE_SWORD) && (index == EQUIP_INV_SWORD_BIGGORON) && (gSaveContext.bgsFlag == 0) &&
+            CHECK_OWNED_EQUIP_ALT(EQUIP_TYPE_SWORD, EQUIP_INV_SWORD_BROKENGIANTKNIFE)) {
+            return ITEM_SWORD_KNIFE;
+        }
+        return ITEM_SWORD_KOKIRI + type * 3 + index;
+    }
+    if ((type == EQUIP_TYPE_SWORD) && (index == EQUIP_INV_SWORD_BIGGORON) &&
+        CHECK_OWNED_EQUIP_ALT(EQUIP_TYPE_SWORD, EQUIP_INV_SWORD_BROKENGIANTKNIFE)) {
+        return ITEM_SWORD_KNIFE;
+    }
+    return ITEM_NONE;
+}
+
+// Puts the item in an inventory slot on a C button, as the pause screen's item page does.
+static void Coop_AssignCButton(PlayState* play, s32 slot, s32 cIndex) {
+    u8 item = gSaveContext.inventory.items[slot];
+
+    if ((item == ITEM_NONE) || (item == ITEM_SOLD_OUT) || !Coop_SlotMeetsAgeReq(slot) ||
+        !GameInteractor_Should(VB_EQUIP_ITEM_TO_C_BUTTON, true, play, slot, item)) {
+        Coop_PlaySfx(NA_SE_SY_ERROR);
+        return;
+    }
+
+    u8 targetItem = item;
+    u8 targetSlot = slot;
+    if ((item == ITEM_ARROW_FIRE) || (item == ITEM_ARROW_ICE) || (item == ITEM_ARROW_LIGHT)) {
+        // Magic arrows go on the button as the bow loaded with them.
+        targetItem = (item == ITEM_ARROW_FIRE)  ? ITEM_BOW_ARROW_FIRE
+                     : (item == ITEM_ARROW_ICE) ? ITEM_BOW_ARROW_ICE
+                                                : ITEM_BOW_ARROW_LIGHT;
+        if (!CVarGetInteger(CVAR_ENHANCEMENT("SeparateArrows"), 0)) {
+            targetSlot = SLOT_BOW;
+        }
+    }
+
+    // If the item is already on another C button, the two buttons trade items.
+    s32 targetButton = cIndex + 1;
+    for (s32 other = 0; other < 3; other++) {
+        if ((other == cIndex) || (gSaveContext.equips.cButtonSlots[other] != targetSlot)) {
+            continue;
+        }
+        if (gSaveContext.equips.buttonItems[targetButton] != ITEM_NONE) {
+            gSaveContext.equips.buttonItems[other + 1] = gSaveContext.equips.buttonItems[targetButton];
+            gSaveContext.equips.cButtonSlots[other] = gSaveContext.equips.cButtonSlots[cIndex];
+            Interface_LoadItemIcon2(play, other + 1);
+        } else {
+            gSaveContext.equips.buttonItems[other + 1] = ITEM_NONE;
+            gSaveContext.equips.cButtonSlots[other] = SLOT_NONE;
+        }
+    }
+
+    gSaveContext.equips.buttonItems[targetButton] = targetItem;
+    gSaveContext.equips.cButtonSlots[cIndex] = targetSlot;
+    Interface_LoadItemIcon1(play, targetButton);
+    Coop_PlaySfx(NA_SE_SY_DECIDE);
+}
+
+// Equips a sword, shield, tunic or boots, as the pause screen's equipment page does, on both Links.
+static void Coop_EquipGear(PlayState* play, s32 type, s32 index) {
+    s32 value = index + 1;
+
+    if ((Coop_GearItem(type, index) == ITEM_NONE) || !Coop_EquipMeetsAgeReq(type, value)) {
+        Coop_PlaySfx(NA_SE_SY_ERROR);
+        return;
+    }
+
+    Inventory_ChangeEquipment(type, value);
+    if (type == EQUIP_TYPE_SWORD) {
+        gSaveContext.infTable[29] = 0;
+        gSaveContext.equips.buttonItems[0] = ITEM_SWORD_KOKIRI + index;
+        if ((index == EQUIP_INV_SWORD_BIGGORON) && (gSaveContext.bgsFlag != 0)) {
+            gSaveContext.swordHealth = 8;
+        } else if ((index == EQUIP_INV_SWORD_BIGGORON) &&
+                   CHECK_OWNED_EQUIP_ALT(EQUIP_TYPE_SWORD, EQUIP_INV_SWORD_BROKENGIANTKNIFE)) {
+            gSaveContext.equips.buttonItems[0] = ITEM_SWORD_KNIFE;
+        }
+        Interface_LoadItemIcon1(play, 0);
+    }
+
+    Player_SetEquipmentData(play, GET_PLAYER(play));
+    if (Coop_GetPlayer2() != nullptr) {
+        CoopSwap swap = Coop_BeginSwap(play, false, false);
+        Player_SetEquipmentData(play, sP2);
+        Coop_EndSwap(swap);
+    }
+    Coop_PlaySfx(NA_SE_SY_DECIDE);
+}
+
+// Reads one stick/D-pad step for menu navigation, with key-repeat while held.
+static void Coop_MenuNavigate(CoopMenu* menu, const Input* input, s32* dx, s32* dy) {
+    s32 stickX = input->rel.stick_x;
+    s32 stickY = input->rel.stick_y;
+    u16 press = input->press.button;
+
+    *dx = *dy = 0;
+    if (CHECK_BTN_ANY(press, BTN_DLEFT)) {
+        *dx = -1;
+    } else if (CHECK_BTN_ANY(press, BTN_DRIGHT)) {
+        *dx = 1;
+    } else if (CHECK_BTN_ANY(press, BTN_DUP)) {
+        *dy = -1;
+    } else if (CHECK_BTN_ANY(press, BTN_DDOWN)) {
+        *dy = 1;
+    }
+    if ((*dx != 0) || (*dy != 0)) {
+        return;
+    }
+
+    if ((ABS(stickX) < 30) && (ABS(stickY) < 30)) {
+        menu->stickRepeatTimer = 0;
+        return;
+    }
+    if (menu->stickRepeatTimer > 0) {
+        menu->stickRepeatTimer--;
+        return;
+    }
+    // First step at once, then repeat every few frames while the stick is held.
+    menu->stickRepeatTimer = (menu->stickRepeatTimer == 0) ? 8 : 4;
+    if (ABS(stickX) >= ABS(stickY)) {
+        *dx = (stickX > 0) ? 1 : -1;
+    } else {
+        *dy = (stickY > 0) ? -1 : 1;
+    }
+}
+
+static void Coop_CloseMenus() {
+    sMenus[0].open = sMenus[1].open = false;
+}
+
+// Runs at the start of each game frame, after the controllers are read and before the play update, so a
+// player with an open menu has their controller to the menu only, and START does not open the full pause
+// screen.
+static void Coop_UpdateMenus() {
+    PlayState* play = gPlayState;
+
+    if ((play == nullptr) || (Coop_GetPlayer2() == nullptr) || !Coop_IsSplitScreenActive(play) ||
+        (play->pauseCtx.state != 0) || (play->pauseCtx.debugState != 0) ||
+        (play->gameOverCtx.state != GAMEOVER_INACTIVE)) {
+        Coop_CloseMenus();
+        return;
+    }
+
+    bool openFullPause = false;
+
+    for (s32 i = 0; i < 2; i++) {
+        CoopMenu* menu = &sMenus[i];
+        Input* input = &play->state.input[(i == 0) ? 0 : COOP_P2_PORT];
+        Player* player = (i == 0) ? GET_PLAYER(play) : sP2;
+        u16 press = input->press.button;
+
+        if (!menu->open) {
+            if (CHECK_BTN_ALL(press, BTN_START) && (play->msgCtx.msgMode == MSGMODE_NONE) &&
+                !(player->stateFlags1 & (PLAYER_STATE1_TALKING | PLAYER_STATE1_DEAD))) {
+                menu->open = true;
+                menu->stickRepeatTimer = 0;
+                Coop_PlaySfx(NA_SE_SY_WIN_OPEN);
+                memset(input, 0, sizeof(*input));
+            }
+            continue;
+        }
+
+        if (CHECK_BTN_ANY(press, BTN_START | BTN_B)) {
+            menu->open = false;
+            Coop_PlaySfx(NA_SE_SY_WIN_CLOSE);
+        } else if (CHECK_BTN_ALL(press, BTN_Z)) {
+            menu->open = false;
+            openFullPause = true;
+        } else if (CHECK_BTN_ALL(press, BTN_R)) {
+            menu->page = (menu->page == COOP_MENU_ITEMS) ? COOP_MENU_GEAR : COOP_MENU_ITEMS;
+            menu->cursorX = menu->cursorY = 0;
+            Coop_PlaySfx(NA_SE_SY_WIN_OPEN);
+        } else {
+            s32 cols = (menu->page == COOP_MENU_ITEMS) ? COOP_MENU_ITEM_COLS : COOP_MENU_GEAR_COLS;
+            s32 rows = (menu->page == COOP_MENU_ITEMS) ? COOP_MENU_ITEM_ROWS : COOP_MENU_GEAR_ROWS;
+            s32 dx, dy;
+
+            Coop_MenuNavigate(menu, input, &dx, &dy);
+            if ((dx != 0) || (dy != 0)) {
+                menu->cursorX = (menu->cursorX + dx + cols) % cols;
+                menu->cursorY = (menu->cursorY + dy + rows) % rows;
+                Coop_PlaySfx(NA_SE_SY_CURSOR);
+            }
+
+            if (menu->page == COOP_MENU_ITEMS) {
+                s32 slot = menu->cursorY * COOP_MENU_ITEM_COLS + menu->cursorX;
+                if (CHECK_BTN_ALL(press, BTN_CLEFT)) {
+                    Coop_AssignCButton(play, slot, 0);
+                } else if (CHECK_BTN_ALL(press, BTN_CDOWN)) {
+                    Coop_AssignCButton(play, slot, 1);
+                } else if (CHECK_BTN_ALL(press, BTN_CRIGHT)) {
+                    Coop_AssignCButton(play, slot, 2);
+                }
+            } else if (CHECK_BTN_ALL(press, BTN_A)) {
+                Coop_EquipGear(play, menu->cursorY, menu->cursorX);
+            }
+        }
+
+        // The menu has this controller; gameplay sees nothing from it.
+        memset(input, 0, sizeof(*input));
+    }
+
+    if (openFullPause) {
+        Coop_CloseMenus();
+        play->state.input[0].press.button |= BTN_START;
+        play->state.input[0].cur.button |= BTN_START;
+    }
+}
+
+static void Coop_FillRect(Gfx** gfxp, s32 x0, s32 y0, s32 x1, s32 y1, u8 r, u8 g, u8 b, u8 a) {
+    Gfx* gfx = *gfxp;
+
+    gDPPipeSync(gfx++);
+    gDPSetCycleType(gfx++, G_CYC_1CYCLE);
+    gDPSetRenderMode(gfx++, G_RM_XLU_SURF, G_RM_XLU_SURF2);
+    gDPSetCombineMode(gfx++, G_CC_PRIMITIVE, G_CC_PRIMITIVE);
+    gDPSetPrimColor(gfx++, 0, 0, r, g, b, a);
+    gDPFillRectangle(gfx++, x0, y0, x1, y1);
+    *gfxp = gfx;
+}
+
+static void Coop_DrawIcon(Gfx** gfxp, s32 item, s32 x, s32 y, s32 size, u8 alpha) {
+    Gfx* gfx = *gfxp;
+
+    gDPPipeSync(gfx++);
+    gDPSetRenderMode(gfx++, G_RM_XLU_SURF, G_RM_XLU_SURF2);
+    gDPSetCombineMode(gfx++, G_CC_MODULATEIA_PRIM, G_CC_MODULATEIA_PRIM);
+    gDPSetPrimColor(gfx++, 0, 0, 255, 255, 255, alpha);
+    gDPLoadTextureBlock(gfx++, gItemIcons[item], G_IM_FMT_RGBA, G_IM_SIZ_32b, 32, 32, 0, G_TX_NOMIRROR | G_TX_WRAP,
+                        G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
+    s32 dd = (32 << 10) / size;
+    gSPTextureRectangle(gfx++, x << 2, y << 2, (x + size) << 2, (y + size) << 2, G_TX_RENDERTILE, 0, 0, dd, dd);
+    *gfxp = gfx;
+}
+
+// Draws the menu in the current HUD region (laid out in 320x240 screen units).
+static void Coop_DrawMenu(PlayState* play, const CoopMenu* menu) {
+    const s32 cell = 26;
+    const s32 icon = 24;
+    bool items = (menu->page == COOP_MENU_ITEMS);
+    s32 cols = items ? COOP_MENU_ITEM_COLS : COOP_MENU_GEAR_COLS;
+    s32 rows = items ? COOP_MENU_ITEM_ROWS : COOP_MENU_GEAR_ROWS;
+    s32 panelX0 = 64;
+    s32 panelX1 = 256;
+    s32 gridX = 160 - (cols * cell) / 2;
+    s32 gridY = 74;
+
+    OPEN_DISPS(play->state.gfxCtx);
+    Gfx* gfx = OVERLAY_DISP;
+
+    Gfx_SetupDL_39Ptr(&gfx);
+    Coop_FillRect(&gfx, panelX0, 50, panelX1, 206, 0, 0, 0, 170);
+    Coop_FillRect(&gfx, panelX0, 50, panelX1, 66, 40, 60, 140, 200);
+
+    for (s32 y = 0; y < rows; y++) {
+        for (s32 x = 0; x < cols; x++) {
+            s32 cellX = gridX + x * cell;
+            s32 cellY = gridY + y * cell;
+            s32 item;
+            bool usable;
+            bool highlighted;
+
+            if (items) {
+                s32 slot = y * COOP_MENU_ITEM_COLS + x;
+                item = gSaveContext.inventory.items[slot];
+                usable = Coop_SlotMeetsAgeReq(slot);
+                highlighted = (gSaveContext.equips.cButtonSlots[0] == slot) ||
+                              (gSaveContext.equips.cButtonSlots[1] == slot) ||
+                              (gSaveContext.equips.cButtonSlots[2] == slot);
+            } else {
+                item = Coop_GearItem(y, x);
+                usable = Coop_EquipMeetsAgeReq(y, x + 1);
+                highlighted = (CUR_EQUIP_VALUE(y) == x + 1);
+            }
+
+            if ((menu->cursorX == x) && (menu->cursorY == y)) {
+                Coop_FillRect(&gfx, cellX - 1, cellY - 1, cellX + icon + 1, cellY + icon + 1, 255, 220, 40, 200);
+            } else if (highlighted) {
+                Coop_FillRect(&gfx, cellX - 1, cellY - 1, cellX + icon + 1, cellY + icon + 1, 80, 160, 255, 120);
+            } else {
+                Coop_FillRect(&gfx, cellX, cellY, cellX + icon, cellY + icon, 255, 255, 255, 30);
+            }
+            if ((item != ITEM_NONE) && (item < ARRAY_COUNT(gItemIcons))) {
+                Coop_DrawIcon(&gfx, item, cellX, cellY, icon, usable ? 255 : 90);
+            }
+        }
+    }
+
+    GfxPrint printer;
+    GfxPrint_Init(&printer);
+    GfxPrint_Open(&printer, gfx);
+    GfxPrint_SetColor(&printer, 255, 255, 255, 255);
+    GfxPrint_SetPosPx(&printer, panelX0 + 6, 54);
+    GfxPrint_Printf(&printer, items ? "ITEMS" : "GEAR");
+    GfxPrint_SetColor(&printer, 200, 200, 200, 255);
+    GfxPrint_SetPosPx(&printer, panelX1 - 6 - 8 * 8, 54);
+    GfxPrint_Printf(&printer, items ? "R: GEAR" : "R: ITEMS");
+    GfxPrint_SetColor(&printer, 255, 255, 120, 255);
+    GfxPrint_SetPosPx(&printer, panelX0 + 6, 182);
+    GfxPrint_Printf(&printer, items ? "C: SET BUTTON" : "A: EQUIP");
+    GfxPrint_SetPosPx(&printer, panelX0 + 6, 194);
+    GfxPrint_Printf(&printer, "Z: FULL MENU  B: CLOSE");
+    gfx = GfxPrint_Close(&printer);
+    GfxPrint_Destroy(&printer);
+
+    OVERLAY_DISP = gfx;
+    CLOSE_DISPS(play->state.gfxCtx);
+}
+
+// #endregion
+
+// #region Per-player HUD
+
+// Viewport and scissor are resolved to pixels when they are set, so they are set again whenever the HUD
+// region changes.
+static void Coop_ResetHudViewport(PlayState* play) {
+    OPEN_DISPS(play->state.gfxCtx);
+    gDPPipeSync(OVERLAY_DISP++);
+    gDPSetScissor(OVERLAY_DISP++, G_SC_NON_INTERLACE, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+    CLOSE_DISPS(play->state.gfxCtx);
+    func_8008A994(&play->interfaceCtx);
+}
+
+// Draws the HUD once per half: each half gets the full HUD laid out for that half's shape, with Player 2's
+// half showing Player 2's A-button action and minimap arrow, and each player's open menu on top.
+extern "C" void Coop_DrawHuds(PlayState* play) {
+    float windowAspect = OTRGetAspectRatio();
+
+    for (s32 i = 0; i < 2; i++) {
+        Viewport viewport;
+        Coop_GetSplitViewport(i, &viewport);
+        s32 width = viewport.rightX - viewport.leftX;
+        s32 height = viewport.bottomY - viewport.topY;
+        float aspect = windowAspect * ((float)width / SCREEN_WIDTH) / ((float)height / SCREEN_HEIGHT);
+        // A half narrower than 4:3 (side by side) gets the 4:3 layout across its width, with each element kept in
+        // shape at the top or bottom, so the hearts and the item buttons don't run into each other.
+        s32 scalePct = 100;
+        if (aspect < 4.0f / 3.0f) {
+            scalePct = (s32)(aspect / (4.0f / 3.0f) * 100.0f);
+            aspect = 4.0f / 3.0f;
+        }
+
+        OPEN_DISPS(play->state.gfxCtx);
+        gSPSetHudRegion(OVERLAY_DISP++, viewport.leftX, viewport.topY, width, height, scalePct);
+        Coop_ResetHudViewport(play);
+        CLOSE_DISPS(play->state.gfxCtx);
+        OTRSetHudAspectRatioOverride(aspect);
+
+        if (i == 0) {
+            Interface_Draw(play);
+        } else {
+            InterfaceContext p1Interface = play->interfaceCtx;
+            Coop_BeginP2Hud(play);
+            CoopSwap swap = Coop_BeginSwap(play, false, false);
+            Interface_Draw(play);
+            Coop_EndSwap(swap);
+            play->interfaceCtx = p1Interface;
+        }
+    }
+
+    // Menus go on top of both HUDs, laid out as a whole (their icons don't shrink toward the corners).
+    for (s32 i = 0; i < 2; i++) {
+        if (!sMenus[i].open) {
+            continue;
+        }
+        Viewport viewport;
+        Coop_GetSplitViewport(i, &viewport);
+        OPEN_DISPS(play->state.gfxCtx);
+        gSPSetHudRegion(OVERLAY_DISP++, viewport.leftX, viewport.topY, viewport.rightX - viewport.leftX,
+                        viewport.bottomY - viewport.topY, 100);
+        Coop_ResetHudViewport(play);
+        CLOSE_DISPS(play->state.gfxCtx);
+        Coop_DrawMenu(play, &sMenus[i]);
+    }
+
+    OTRSetHudAspectRatioOverride(0.0f);
+    OPEN_DISPS(play->state.gfxCtx);
+    gSPClearHudRegion(OVERLAY_DISP++);
+    Coop_ResetHudViewport(play);
+    CLOSE_DISPS(play->state.gfxCtx);
+}
+
+// #endregion
+
 static void Coop_RegisterActor() {
     if (sCoopActorId >= 0) {
         return;
@@ -584,6 +1101,7 @@ static void RegisterSplitScreenCoop() {
     // The whole actor context is torn down on scene change, so Player 2 is spawned again each scene.
     COND_HOOK(OnSceneSpawnActors, CVAR_COOP_VALUE, []() { Coop_SpawnP2(); });
     COND_HOOK(OnPlayDestroy, CVAR_COOP_VALUE, []() {
+        Coop_CloseMenus();
         sP2 = nullptr;
         sP2CameraReady = false;
         sTargetSwapActor = nullptr;
@@ -595,6 +1113,7 @@ static void RegisterSplitScreenCoop() {
             Coop_EndTargetSwap(gPlayState);
         }
     });
+    COND_HOOK(OnGameStateMainStart, CVAR_COOP_VALUE, []() { Coop_UpdateMenus(); });
     COND_HOOK(OnCameraState, CVAR_COOP_VALUE, [](PlayState* play) {
         // Actor updates are over for this frame; make sure Player 1 is "the player" again.
         Coop_EndTargetSwap(play);

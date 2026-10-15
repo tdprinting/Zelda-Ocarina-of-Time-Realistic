@@ -1558,6 +1558,16 @@ float Interpreter::AdjXForAspectRatio(float x) const {
     if (mFbActive && mActiveFrameBuffer != mFrameBuffers.end() &&
         (!mActiveFrameBuffer->second.resize || mActiveFrameBuffer->second.forceFixedAspect)) {
         return x;
+    } else if (HudRegionActive()) {
+        if (mHudElementScale < 1.0f) {
+            // Narrow region: the 4:3 layout spans the region's width (elements are squashed back to shape
+            // vertically by ScaleHudElement)
+            return x;
+        }
+        // Lay out as if the HUD region were the whole screen, with the region's own aspect ratio
+        float regionWidth = mHudRegion.width * ((float)mCurDimensions.width / mNativeDimensions.width);
+        float regionHeight = mHudRegion.height * ((float)mCurDimensions.height / mNativeDimensions.height);
+        return x * (4.0f / 3.0f) / (regionWidth / regionHeight);
     } else {
         return x * (4.0f / 3.0f) / ((float)mCurDimensions.width / (float)mCurDimensions.height);
     }
@@ -1781,6 +1791,26 @@ void Interpreter::GfxSpTri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx
     struct LoadedVertex* v2 = &mRsp->loaded_vertices[vtx2_idx];
     struct LoadedVertex* v3 = &mRsp->loaded_vertices[vtx3_idx];
     struct LoadedVertex* v_arr[3] = { v1, v2, v3 };
+
+    // Split-screen HUD: shrink HUD geometry toward its region corner, on copies so shared vertices stay intact
+    struct LoadedVertex hudVerts[3];
+    if (!is_rect && HudRegionActive() && mHudElementScale < 1.0f && v1->w > 0.0f && v2->w > 0.0f && v3->w > 0.0f) {
+        float xs[3], ys[3];
+        for (int i = 0; i < 3; i++) {
+            xs[i] = v_arr[i]->x / v_arr[i]->w;
+            ys[i] = v_arr[i]->y / v_arr[i]->w;
+        }
+        ScaleHudElement(xs, ys, 3);
+        for (int i = 0; i < 3; i++) {
+            hudVerts[i] = *v_arr[i];
+            hudVerts[i].x = xs[i] * hudVerts[i].w;
+            hudVerts[i].y = ys[i] * hudVerts[i].w;
+            v_arr[i] = &hudVerts[i];
+        }
+        v1 = v_arr[0];
+        v2 = v_arr[1];
+        v3 = v_arr[2];
+    }
 
     // if (rand()%2) return;
 
@@ -2294,8 +2324,53 @@ void Interpreter::GfxSpExtraGeometryMode(uint32_t clear, uint32_t set) {
     mRsp->extra_geometry_mode |= set;
 }
 
+void Interpreter::SetHudRegion(uint16_t x, uint16_t y, uint16_t width, uint16_t height, uint8_t scalePct) {
+    Flush();
+    mHudRegion = { (int16_t)x, (int16_t)y, width, height };
+    mHudElementScale = (scalePct == 0 || scalePct > 100) ? 1.0f : scalePct / 100.0f;
+}
+
+// For a region narrower than 4:3, the 4:3 HUD layout is spread across the region's width, which leaves every
+// element too tall by 1 / mHudElementScale. This squashes one element (given by its corners in normalized
+// device coordinates) back to shape toward the top or bottom edge nearest its center, so elements keep their
+// distance from the top and bottom of the region. Elements taller than half the region (screen fades,
+// backgrounds) are left alone.
+void Interpreter::ScaleHudElement(float* xs, float* ys, int count) const {
+    if (!HudRegionActive() || mHudElementScale >= 1.0f) {
+        return;
+    }
+
+    float minY = ys[0], maxY = ys[0];
+    for (int i = 1; i < count; i++) {
+        minY = std::min(minY, ys[i]);
+        maxY = std::max(maxY, ys[i]);
+    }
+    if ((maxY - minY) > 1.0f) {
+        return;
+    }
+
+    float anchorY = ((minY + maxY) >= 0.0f) ? 1.0f : -1.0f;
+    for (int i = 0; i < count; i++) {
+        ys[i] = anchorY + (ys[i] - anchorY) * mHudElementScale;
+    }
+}
+
+bool Interpreter::HudRegionActive() const {
+    return mHudRegion.width != 0 && mHudRegion.height != 0 && !mFbActive;
+}
+
 void Interpreter::AdjustVIewportOrScissor(XYWidthHeight* area) {
     if (!mFbActive) {
+        if (HudRegionActive()) {
+            // Map the full native screen onto the HUD region
+            float scaleX = (float)mHudRegion.width / mNativeDimensions.width;
+            float scaleY = (float)mHudRegion.height / mNativeDimensions.height;
+            area->x = (int16_t)(mHudRegion.x + area->x * scaleX);
+            area->y = (int16_t)(mHudRegion.y + area->y * scaleY);
+            area->width = (uint32_t)(area->width * scaleX);
+            area->height = (uint32_t)(area->height * scaleY);
+        }
+
         // Adjust the y origin based on the y-inversion for the active framebuffer
         GfxClipParameters clipParameters = mRapi->GetClipParameters();
         if (clipParameters.invertY) {
@@ -2841,6 +2916,16 @@ void Interpreter::GfxDrawRectangle(int32_t ulx, int32_t uly, int32_t lrx, int32_
 
     ulxf = AdjXForAspectRatio(ulxf);
     lrxf = AdjXForAspectRatio(lrxf);
+
+    if (HudRegionActive()) {
+        float xs[2] = { ulxf, lrxf };
+        float ys[2] = { ulyf, lryf };
+        ScaleHudElement(xs, ys, 2);
+        ulxf = xs[0];
+        lrxf = xs[1];
+        ulyf = ys[0];
+        lryf = ys[1];
+    }
 
     struct LoadedVertex* ul = &mRsp->loaded_vertices[MAX_VERTICES + 0];
     struct LoadedVertex* ll = &mRsp->loaded_vertices[MAX_VERTICES + 1];
@@ -4449,6 +4534,14 @@ bool gfx_set_fill_color_handler_rdp(F3DGfx** cmd0) {
     return false;
 }
 
+bool gfx_set_hud_region_handler_custom(F3DGfx** cmd0) {
+    Interpreter* gfx = mInstance.lock().get();
+    F3DGfx* cmd = *cmd0;
+
+    gfx->SetHudRegion(C0(12, 12), C0(0, 12), C1(20, 12), C1(8, 12), C1(0, 8));
+    return false;
+}
+
 bool gfx_set_intensity_handler_custom(F3DGfx** cmd0) {
     Interpreter* gfx = mInstance.lock().get();
     F3DGfx* cmd = *cmd0;
@@ -4734,6 +4827,7 @@ static constexpr UcodeHandler otrHandlers = {
     { OTR_G_SETINTENSITY, { "G_SETINTENSITY", gfx_set_intensity_handler_custom } }, // G_SETINTENSITY (0x40)
     { OTR_G_MOVEMEM_HASH, { "OTR_G_MOVEMEM_HASH", gfx_movemem_handler_otr } },      // OTR_G_MOVEMEM_HASH
     { OTR_G_PUSH_SHADER, { "G_PUSH_SHADER", gfx_push_shader } },
+    { OTR_G_SETHUDREGION, { "G_SETHUDREGION", gfx_set_hud_region_handler_custom } }, // G_SETHUDREGION (0x50)
     { OTR_G_POP_SHADER, { "G_POP_SHADER", gfx_pop_shader } },
     { RDP_G_LOADBLOCK_WIDE, { "G_LOADBLOCK_WIDE", gfx_load_block_wide_handler_rdp } }, // RDP_G_LOADBLOCK_WIDE (-15)
     { RDP_G_VTX_WIDE, { "G_VTX_WIDE", gfx_vtx_handler_f3dex2 } },                      // RDP_G_VTX_WIDE (-16)
@@ -5052,6 +5146,8 @@ bool Interpreter::ViewportMatchesRendererResolution() {
 }
 
 void Interpreter::StartFrame() {
+    mHudRegion = {};
+    mHudElementScale = 1.0f;
     mWapi->GetDimensions(&mGfxCurrentWindowDimensions.width, &mGfxCurrentWindowDimensions.height, &mCurWindowPosX,
                          &mCurWindowPosY);
     if (mCurDimensions.height == 0) {

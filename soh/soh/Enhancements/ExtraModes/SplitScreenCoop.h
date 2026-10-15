@@ -32,6 +32,10 @@ void Coop_GetSplitViewport(int viewIndex, Viewport* viewport);
 // Points the view at Player 2's camera (eye, look-at, up, field of view) as of the last camera update.
 void Coop_ApplyPlayer2Camera(View* view);
 
+// Draws the HUD (and any open co-op menu) once in each player's half. Used instead of Interface_Draw on
+// split-screen frames.
+void Coop_DrawHuds(PlayState* play);
+
 #ifdef __cplusplus
 }
 #endif

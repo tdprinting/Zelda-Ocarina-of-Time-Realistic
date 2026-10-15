@@ -1287,13 +1287,21 @@ skip:
                        play->state.gfxCtx);
 }
 
+// SoH [Co-op] Set by Play_Draw when this frame is drawn as two views
+static bool sCoopSplitThisFrame = false;
+
 void Play_DrawOverlayElements(PlayState* play) {
     if ((play->pauseCtx.state != 0) || (play->pauseCtx.debugState != 0)) {
         KaleidoScopeCall_Draw(play);
     }
 
     if (gSaveContext.gameMode == GAMEMODE_NORMAL) {
-        Interface_Draw(play);
+        // SoH [Co-op] One HUD per player, each in its own half
+        if (sCoopSplitThisFrame) {
+            Coop_DrawHuds(play);
+        } else {
+            Interface_Draw(play);
+        }
     }
 
     Message_Draw(play);
@@ -1485,6 +1493,7 @@ static void Play_DrawCoopView(PlayState* play, Viewport* fullViewport) {
 void Play_Draw(PlayState* play) {
     GraphicsContext* gfxCtx = play->state.gfxCtx;
     bool coopSplit = false;
+    sCoopSplitThisFrame = false;
     Viewport fullViewport;
     Viewport splitViewport;
 
@@ -1539,6 +1548,7 @@ void Play_Draw(PlayState* play) {
 
         // SoH [Co-op] In split-screen co-op, Player 1's view takes the first half of the screen
         coopSplit = Coop_IsSplitScreenActive(play) && (R_PAUSE_MENU_MODE == 0) && (gTrnsnUnkState == 0);
+        sCoopSplitThisFrame = coopSplit;
         if (coopSplit) {
             fullViewport = play->view.viewport;
             Coop_GetSplitViewport(0, &splitViewport);

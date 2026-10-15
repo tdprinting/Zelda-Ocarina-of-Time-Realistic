@@ -489,6 +489,9 @@ class Interpreter {
                                    uint32_t nativeHeight) const;
     float AdjXForAspectRatio(float x) const;
     void AdjustVIewportOrScissor(XYWidthHeight* area);
+    void SetHudRegion(uint16_t x, uint16_t y, uint16_t width, uint16_t height, uint8_t scalePct);
+    bool HudRegionActive() const;
+    void ScaleHudElement(float* xs, float* ys, int count) const;
     void CalcAndSetViewport(const F3DVp_t* viewport);
 
     void SpReset();
@@ -535,6 +538,10 @@ class Interpreter {
     uintptr_t mSegmentPointers[MAX_SEGMENT_POINTERS]{};
 
     bool mFbActive{};
+    // Sub-rectangle of the screen (native units) that 2D and overlay graphics are drawn into; width 0 = off.
+    XYWidthHeight mHudRegion{};
+    // Below 1: the region is narrower than 4:3 by this factor and HUD elements are squashed back to shape.
+    float mHudElementScale = 1.0f;
     bool mRendersToFb{}; // game_renders_to_framebuffer;
     std::map<int, FBInfo>::iterator mActiveFrameBuffer;
     std::map<int, FBInfo> mFrameBuffers;
