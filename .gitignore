@@ -461,3 +461,6 @@ soh/properties.h
 /clang-format
 /clang-format.exe
 *.o2r
+
+# the Android launcher icon is source, not a generated image
+!Android/app/src/main/res/**/*.png
