@@ -197,6 +197,7 @@
 #define G_SETTILESIZE_INTERP 0x45
 #define G_SETTARGETINTERPINDEX 0x46
 #define G_SETTILESIZE_LERP 0x4a
+#define G_SETFACEPARAMS 0x4b
 
 /*
  * The following commands are the "generated" RDP commands; the user
@@ -2833,6 +2834,38 @@ typedef union Gfx {
 #define gsSPPushShader(shader)                                  \
     { (_SHIFTL(G_PUSH_SHADER, 24, 8)), (uintptr_t)(shader) }, { \
         0, 0                                                    \
+    }
+
+/*
+ * Expressive eyes: G_SETFACEPARAMS points the renderer at a GfxFaceParams for the draws that follow, until the
+ * next G_SETFACEPARAMS (NULL resets to vanilla eyes). The struct must stay valid until the frame has been drawn
+ * (the graph pool is fine). Only eye-material textures with an automatic eye mask react to it; see
+ * docs/modern-rendering/MATERIALS.md.
+ */
+typedef struct {
+    float lookTarget[3]; // world-space point the eyes look at
+    float lookWeight;    // 0 = eyes centred, 1 = look at lookTarget
+    float saccade[2];    // extra eye offset: x = the character's left, y = up, -1..1 of the eye's half-width
+    float upperLid;      // 0 open, 1 closed
+    float lowerLid;      // 0 rest, 1 meets the upper lid (smile, squint)
+    float tilt;          // -1..1: + slants the upper lids down toward the nose (angry, strain), - up (worried, sad)
+    float pupil;         // pupil size: 1 normal, 0.7 fear or surprise, 1.2 relaxed
+    uint32_t flags;      // bit 0: active (0 = vanilla eyes)
+} GfxFaceParams;
+
+#define G_FACEPARAMS_ACTIVE 1
+
+#define gsSPSetFaceParams(params)                                 \
+    { (_SHIFTL(G_SETFACEPARAMS, 24, 8)), (uintptr_t)(params) }, { \
+        0, 0                                                      \
+    }
+
+#define gSPSetFaceParams(pkt, params)                    \
+    {                                                    \
+        Gfx* _g0 = (Gfx*)(pkt);                          \
+                                                         \
+        _g0->words.w0 = _SHIFTL(G_SETFACEPARAMS, 24, 8); \
+        _g0->words.w1 = (uintptr_t)(params);             \
     }
 
 #define gSPPushShader(pkt, shader)                     \

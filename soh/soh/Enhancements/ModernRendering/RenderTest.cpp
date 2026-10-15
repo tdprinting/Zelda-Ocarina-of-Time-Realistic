@@ -177,6 +177,11 @@ void OnFrame() {
             sTest.ticks = 0;
             return;
         }
+        // Seed the game's RNG once the scene settles so idle animations (blinks, fidgets) land the same way on
+        // every run
+        if (sTest.ticks == 0) {
+            Rand_Seed(0x5EED);
+        }
         if (++sTest.ticks < sTest.warmupTicks) {
             return;
         }

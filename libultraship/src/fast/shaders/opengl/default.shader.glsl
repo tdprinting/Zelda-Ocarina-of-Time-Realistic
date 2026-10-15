@@ -189,6 +189,13 @@
     uniform vec4 uMatParams;              // x: roughness scale, y: metalness scale, z: normal strength,
                                           // w: skin (eyes: >0 eye mask in uMatSkin.r, 0 whole texture, <0 auto mask)
     uniform vec2 uMatMirror;              // 1 where the base texture mirrors along S, T
+    @if(o_material_eye)
+    // Expressive eyes. uEyeInfo: what the renderer found in the eye texture (MaterialState::eyeInfo); uFace: the
+    // face from G_SETFACEPARAMS ([0] look target, weight; [1] saccade xy, upper lid, lower lid; [2] tilt, pupil,
+    // active)
+    uniform vec4 uEyeInfo[9];
+    uniform @{highp} vec4 uFace[3];
+    @end
 
     // Tangent frame from screen-space derivatives (Schüler's cotangent frame), so meshes need no tangents
     vec3 perturbNormal(vec3 n, @{highp} vec3 p, vec2 uv, vec3 tn) {
@@ -397,6 +404,87 @@
             @end
         @end
 
+        @if(o_modern_lighting && o_material_eye)
+            // Expressive eyes: repaint the vanilla eye with a procedural one that can look around, widen or narrow
+            // its pupil and close its lids, driven by G_SETFACEPARAMS
+            float eyeLidCover = 0.0;
+            if (uMatParams.w < 0.0 && uFace[2].z > 0.5 && uEyeInfo[0].w > 0.5) {
+                // Eye space, x across the eye in half widths (towards +u), y up in half heights: the renderer stored
+                // each texel's offset from its eye's centre in the mask, which filters exactly like the texture so
+                // it follows any tiling, clamping or mirroring
+                vec4 eyeMap = @{texture}(uMatSkin, vTexCoord0);
+                vec2 eyeQ = (eyeMap.gb * 2.0 - 1.0) * vec2(2.0, -2.0);
+                bool eyeSecond = uEyeInfo[0].w > 1.5 && eyeMap.a > 0.5;
+                vec4 eyeGeo = eyeSecond ? uEyeInfo[5] : uEyeInfo[1];
+                vec4 eyeIris = eyeSecond ? uEyeInfo[6] : uEyeInfo[2];
+                vec4 eyeSclera = eyeSecond ? uEyeInfo[7] : uEyeInfo[3];
+                vec2 eyeRest = (eyeSecond ? uEyeInfo[8] : uEyeInfo[4]).xy;
+                vec2 eyeTexSize = vec2(textureSize(uTex0, 0));
+                float eyeAspect = (eyeGeo.z * eyeTexSize.x) / max(eyeGeo.w * eyeTexSize.y, 1e-4);
+
+                // The texture's axes on the face, in world space
+                @{highp} vec3 eyeDpx = dFdx(vWorldPos);
+                @{highp} vec3 eyeDpy = dFdy(vWorldPos);
+                vec2 eyeDuvx = dFdx(eyeQ) * vec2(1.0, -1.0);
+                vec2 eyeDuvy = dFdy(eyeQ) * vec2(1.0, -1.0);
+                float eyeDet = eyeDuvx.x * eyeDuvy.y - eyeDuvx.y * eyeDuvy.x;
+                vec3 eyeU = vec3(1.0, 0.0, 0.0), eyeUp = vec3(0.0, 1.0, 0.0);
+                if (abs(eyeDet) > 1e-12) {
+                    eyeU = normalize((eyeDpx * eyeDuvy.y - eyeDpy * eyeDuvx.y) / eyeDet);
+                    eyeUp = -normalize((eyeDpy * eyeDuvx.x - eyeDpx * eyeDuvy.x) / eyeDet);
+                }
+                // Gaze: towards the look target, plus the saccade (x = the character's left)
+                @{highp} vec3 eyeLook = normalize(uFace[0].xyz - vWorldPos);
+                vec2 eyeGaze = vec2(dot(eyeLook, eyeU), dot(eyeLook, eyeUp)) * uFace[0].w;
+                vec3 eyeLeft = cross(eyeUp, mlGeomNormal);
+                eyeGaze += vec2(uFace[1].x * sign(dot(eyeLeft, eyeU) + 1e-4), uFace[1].y);
+                float irisR = eyeIris.w;
+                vec2 irisC = clamp(vec2((eyeRest.x + eyeGaze.x) * eyeAspect, eyeRest.y + eyeGaze.y), -vec2(max(eyeAspect - irisR * 0.8, 0.0), max(1.0 - irisR * 0.6, 0.0)),
+                                   vec2(max(eyeAspect - irisR * 0.8, 0.0), max(1.0 - irisR * 0.6, 0.0)));
+
+                // Iris and pupil, at screen resolution: radial fibres, a brighter ring round the pupil, a dark
+                // limbal ring at the edge, and a crisp pupil
+                vec2 eyeD = vec2(eyeQ.x * eyeAspect, eyeQ.y) - irisC;
+                float eyeR = length(eyeD);
+                float eyeAa = max(fwidth(eyeR), 1e-3);
+                float eyeAng = atan(eyeD.y, eyeD.x + 1e-6);
+                float fibres = mix(0.5 + 0.5 * sin(eyeAng * 31.0 + 3.0 * sin(eyeAng * 7.0)),
+                                   0.5 + 0.5 * sin(eyeAng * 53.0 + 1.7), 0.4);
+                float eyeRn = eyeR / irisR;
+                vec3 irisCol = eyeIris.rgb * (0.72 + 0.28 * fibres) * mix(1.3, 1.0, smoothstep(0.45, 0.7, eyeRn));
+                irisCol = mix(irisCol, eyeIris.rgb * 0.3, smoothstep(0.78, 1.0, eyeRn));
+                float pupilR = irisR * 0.45 * uFace[2].y;
+                float irisA = 1.0 - smoothstep(irisR - eyeAa, irisR + eyeAa, eyeR);
+                float pupilA = 1.0 - smoothstep(pupilR - eyeAa, pupilR + eyeAa, eyeR);
+                float eyeRho = length(eyeQ);
+                vec3 eyeCol = eyeSclera.rgb * (1.0 - 0.3 * smoothstep(0.35, 1.0, eyeRho));
+                eyeCol = mix(eyeCol, irisCol, irisA);
+                eyeCol = mix(eyeCol, vec3(0.03), pupilA);
+                eyeCol *= 1.0 - 0.25 * smoothstep(0.2, 1.0, eyeQ.y); // the upper lid's shadow
+
+                // Lids: skin from the top down to the upper lid line (slanted by tilt, towards the nose) and from
+                // the bottom up to the lower lid, which rises along an upward curve (a smile or squint)
+                float upperLid = clamp(uFace[1].z, 0.0, 1.0), lowerLid = clamp(uFace[1].w, 0.0, 1.0);
+                float towardNose = eyeQ.x * eyeSclera.w;
+                float lidU = 1.25 - 2.45 * upperLid + 0.25 * (1.0 - eyeQ.x * eyeQ.x) * (1.0 - upperLid) -
+                             clamp(uFace[2].x, -1.0, 1.0) * 0.45 * towardNose * (1.0 - 0.5 * upperLid);
+                float lidL = mix(-1.25, lidU - 0.02, lowerLid) + 0.3 * lowerLid * (1.0 - lowerLid) * (1.0 - eyeQ.x * eyeQ.x);
+                float lidAa = max(fwidth(eyeQ.y), 1e-3);
+                eyeLidCover = max(smoothstep(lidU - lidAa, lidU + lidAa, eyeQ.y), 1.0 - smoothstep(lidL - lidAa, lidL + lidAa, eyeQ.y));
+                eyeCol = mix(eyeCol, uEyeInfo[0].rgb * 0.95, eyeLidCover);
+                float lashU = 1.0 - smoothstep(0.0, 0.12 + lidAa, abs(eyeQ.y - lidU));
+                float lashL = (1.0 - smoothstep(0.0, 0.05 + lidAa, abs(eyeQ.y - lidL))) * step(0.02, lowerLid);
+                eyeCol = mix(eyeCol, vec3(0.07, 0.05, 0.04), max(lashU, lashL * 0.7));
+
+                // Keep the vanilla eyeliner round the rim of the eye
+                float vanillaLine = (1.0 - smoothstep(0.08, 0.2, dot(texVal0.rgb, vec3(0.3, 0.59, 0.11)))) * smoothstep(0.7, 0.95, eyeRho);
+                eyeCol = mix(eyeCol, texVal0.rgb, vanillaLine * (1.0 - eyeLidCover));
+                float eyeMaskV = eyeMap.r;
+                texVal0.rgb = mix(texVal0.rgb, eyeCol, eyeMaskV);
+                eyeLidCover *= eyeMaskV;
+            }
+        @end
+
         @if(o_alpha) 
             vec4 texel;
         @else 
@@ -455,13 +543,14 @@
                         // the offsets the renderer stored in the mask (G, B) so the highlight and catchlight
                         // sit on the eye as on a real eyeball.
                         vec4 eyeMap = @{texture}(uMatSkin, vTexCoord0);
-                        vec2 eyeOffset = eyeMap.gb * 2.0 - 1.0;
+                        vec2 eyeOffset = clamp((eyeMap.gb * 2.0 - 1.0) * 2.0, -1.0, 1.0);
                         // On the mirrored copies of the texture its texels run against the UVs
                         vec2 eyeFlip = mix(vec2(1.0), 1.0 - 2.0 * mod(floor(vTexCoord0), 2.0), uMatMirror);
                         eyeOffset *= eyeFlip;
                         vec3 eyeNormal = perturbNormal(mlGeomNormal, vWorldPos, vTexCoord0,
                                                        normalize(vec3(eyeOffset.x * 1.6, -eyeOffset.y * 1.6, 1.0)));
-                        mlSpec = modernSpecularRim(mlGeomNormal, mlView) + eyeCornea(eyeNormal, mlView) * eyeMap.r;
+                        mlSpec = modernSpecularRim(mlGeomNormal, mlView) +
+                                 eyeCornea(eyeNormal, mlView) * eyeMap.r * (1.0 - eyeLidCover);
                     } else {
                         // A mask map (skinMask) or the whole texture
                         float eyeMask = uMatParams.w > 0.0 ? @{texture}(uMatSkin, vTexCoord0).r : 1.0;
